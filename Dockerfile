@@ -10,7 +10,8 @@ RUN npm run build
 
 FROM golang:1.25-alpine AS builder
 
-ARG VERSION
+# Keep local/manual Docker builds out of SyncTV's implicit dev mode.
+ARG VERSION=v0.9.15
 
 WORKDIR /synctv
 
