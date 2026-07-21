@@ -311,8 +311,8 @@ func (c *Client) UserPlaybackInfo(id string, opts ...UserPlaybackInfoOption) (*P
 				{
 					Container:  "mp4,m4v",
 					Type:       "Video",
-					VideoCodec: "h264,hevc,vp9,av1",
-					AudioCodec: "aac,mp3,mp2,opus,flac,vorbis",
+					VideoCodec: "h264",
+					AudioCodec: "aac,mp3",
 				},
 				{
 					Container:  "mov",
@@ -376,8 +376,8 @@ func (c *Client) UserPlaybackInfo(id string, opts ...UserPlaybackInfoOption) (*P
 				{
 					Container:  "hls",
 					Type:       "Video",
-					VideoCodec: "av1,hevc,h264,vp9",
-					AudioCodec: "aac,mp2,opus,flac",
+					VideoCodec: "h264",
+					AudioCodec: "aac",
 				},
 				{
 					Container:  "hls",
@@ -465,8 +465,8 @@ func (c *Client) UserPlaybackInfo(id string, opts ...UserPlaybackInfoOption) (*P
 				{
 					Container:           "mp4",
 					Type:                "Video",
-					AudioCodec:          "aac,mp2,opus,flac",
-					VideoCodec:          "hevc,h264,vp9",
+					AudioCodec:          "aac",
+					VideoCodec:          "h264",
 					Context:             "Streaming",
 					Protocol:            "hls",
 					MaxAudioChannels:    "2",
