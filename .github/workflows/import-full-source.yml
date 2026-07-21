@@ -79,13 +79,20 @@ jobs:
           PY
           gofmt -w vendors/vendors/emby/user.go
 
-      - name: Add custom documentation and lean build workflow
+      - name: Add custom documentation
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p .github/upstream-workflows
-          if [ -f .github/workflows/release.yml ]; then
-            mv .github/workflows/release.yml .github/upstream-workflows/release.yml.disabled
+
+          # The workflow token used by this import cannot safely add new workflow files.
+          # Preserve upstream workflows as documentation and add our build workflow later.
+          if [ -d .github/workflows ]; then
+            mkdir -p .github/upstream-workflows
+            for file in .github/workflows/*; do
+              [ -e "$file" ] || continue
+              mv "$file" ".github/upstream-workflows/$(basename "$file").disabled"
+            done
+            rmdir .github/workflows || true
           fi
 
           cat > UPSTREAM.md <<EOF
@@ -132,43 +139,6 @@ jobs:
                 PGID: "0"
                 UMASK: "022"
                 TZ: Asia/Shanghai
-          EOF
-
-          cat > .github/workflows/build-custom.yml <<'EOF'
-          name: build-custom-image
-
-          on:
-            push:
-              branches: [main, full-source-phase1]
-            pull_request:
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-            packages: write
-
-          jobs:
-            docker:
-              runs-on: ubuntu-24.04
-              steps:
-                - uses: actions/checkout@v4
-                - uses: docker/setup-buildx-action@v3
-                - name: Login to GHCR
-                  if: github.event_name != 'pull_request'
-                  uses: docker/login-action@v3
-                  with:
-                    registry: ghcr.io
-                    username: ${{ github.actor }}
-                    password: ${{ secrets.GITHUB_TOKEN }}
-                - name: Build and optionally push
-                  uses: docker/build-push-action@v6
-                  with:
-                    context: .
-                    platforms: linux/amd64
-                    push: ${{ github.event_name != 'pull_request' }}
-                    tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-                    cache-from: type=gha
-                    cache-to: type=gha,mode=max
           EOF
 
           git add -A
