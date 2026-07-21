@@ -12,37 +12,50 @@ jobs:
   import:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout custom repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Import complete SyncTV source
+      - name: Prepare branch and connect upstream history
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote remove upstream || true
           git remote add upstream https://github.com/synctv-org/synctv.git
           git fetch upstream main --tags
           git fetch origin main
           git checkout -B full-source-phase1 origin/main
-          git merge --allow-unrelated-histories -s ours --no-edit upstream/main -m "chore: connect SyncTV upstream history"
+          git merge --allow-unrelated-histories -s ours --no-edit -m "chore: connect SyncTV upstream history" upstream/main
 
+      - name: Check out official source and submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
           git rm -r --ignore-unmatch .
           git checkout upstream/main -- .
           git submodule sync --recursive
           git submodule update --init --recursive
+          echo "MAIN_SHA=$(git rev-parse upstream/main)" >> "$GITHUB_ENV"
+          echo "VENDORS_SHA=$(git -C vendors rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "WEB_SHA=$(git -C synctv-web rev-parse HEAD)" >> "$GITHUB_ENV"
 
-          MAIN_SHA="$(git rev-parse upstream/main)"
-          VENDORS_SHA="$(git -C vendors rev-parse HEAD)"
-          WEB_SHA="$(git -C synctv-web rev-parse HEAD)"
-
+      - name: Flatten vendors and web submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
           git rm -f --cached vendors synctv-web
           rm -rf vendors/.git synctv-web/.git
           rm -f .gitmodules
           git add -A
           git commit -m "chore: import full SyncTV source with flattened submodules"
 
+      - name: Apply mobile Emby compatibility fix
+        shell: bash
+        run: |
+          set -euxo pipefail
           python3 <<'PY'
           from pathlib import Path
 
@@ -57,12 +70,19 @@ jobs:
               ('AudioCodec:          "aac,mp2,opus,flac"', 'AudioCodec:          "aac"'),
           ]
           for old, new in replacements:
-              if old not in text:
+              count = text.count(old)
+              print(f"replace {old!r}: found {count}")
+              if count < 1:
                   raise SystemExit(f"Expected source fragment not found: {old}")
               text = text.replace(old, new, 1)
           path.write_text(text, encoding="utf-8")
           PY
+          gofmt -w vendors/vendors/emby/user.go
 
+      - name: Add custom documentation and lean build workflow
+        shell: bash
+        run: |
+          set -euxo pipefail
           mkdir -p .github/upstream-workflows
           if [ -f .github/workflows/release.yml ]; then
             mv .github/workflows/release.yml .github/upstream-workflows/release.yml.disabled
@@ -153,4 +173,9 @@ jobs:
 
           git add -A
           git commit -m "fix: use mobile-compatible Emby playback profile"
+
+      - name: Push full source branch
+        shell: bash
+        run: |
+          set -euxo pipefail
           git push origin HEAD:full-source-phase1 --force
