@@ -1,0 +1,16 @@
+services:
+  synctv:
+    image: ghcr.io/navimikew/synctv-fix:phase1-mobile-compat
+    container_name: synctv-mobile-fix
+    restart: unless-stopped
+    ports:
+      - "8080:8080/tcp"
+      - "8080:8080/udp"
+    volumes:
+      # Replace the left side with the SAME Synology folder used by your current SyncTV.
+      - /volume1/docker/synctv:/root/.synctv
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK=022
+      - TZ=Asia/Shanghai
