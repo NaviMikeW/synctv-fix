@@ -1,8 +1,9 @@
 services:
   synctv:
-    image: ghcr.io/navimikew/synctv-fix:full-source-phase1
+    image: ghcr.io/navimikew/synctv-fix:latest
     container_name: synctv-fix
     restart: unless-stopped
+    pull_policy: always
     ports:
       - "8080:8080/tcp"
       - "8080:8080/udp"
