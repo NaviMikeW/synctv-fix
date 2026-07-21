@@ -1,0 +1,157 @@
+name: import-full-source
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/import-full-source.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Import complete SyncTV source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/synctv-org/synctv.git
+          git fetch upstream main --tags
+          git fetch origin main
+          git checkout -B full-source-phase1 origin/main
+          git merge --allow-unrelated-histories -s ours --no-edit upstream/main -m "chore: connect SyncTV upstream history"
+
+          git rm -r --ignore-unmatch .
+          git checkout upstream/main -- .
+          git submodule sync --recursive
+          git submodule update --init --recursive
+
+          MAIN_SHA="$(git rev-parse upstream/main)"
+          VENDORS_SHA="$(git -C vendors rev-parse HEAD)"
+          WEB_SHA="$(git -C synctv-web rev-parse HEAD)"
+
+          git rm -f --cached vendors synctv-web
+          rm -rf vendors/.git synctv-web/.git
+          rm -f .gitmodules
+          git add -A
+          git commit -m "chore: import full SyncTV source with flattened submodules"
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("vendors/vendors/emby/user.go")
+          text = path.read_text(encoding="utf-8")
+          replacements = [
+              ('VideoCodec: "h264,hevc,vp9,av1"', 'VideoCodec: "h264"'),
+              ('AudioCodec: "aac,mp3,mp2,opus,flac,vorbis"', 'AudioCodec: "aac,mp3"'),
+              ('VideoCodec: "av1,hevc,h264,vp9"', 'VideoCodec: "h264"'),
+              ('AudioCodec: "aac,mp2,opus,flac"', 'AudioCodec: "aac"'),
+              ('VideoCodec:          "hevc,h264,vp9"', 'VideoCodec:          "h264"'),
+              ('AudioCodec:          "aac,mp2,opus,flac"', 'AudioCodec:          "aac"'),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f"Expected source fragment not found: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          mkdir -p .github/upstream-workflows
+          if [ -f .github/workflows/release.yml ]; then
+            mv .github/workflows/release.yml .github/upstream-workflows/release.yml.disabled
+          fi
+
+          cat > UPSTREAM.md <<EOF
+          # Upstream snapshot
+
+          Complete flattened SyncTV source snapshot:
+
+          - synctv: https://github.com/synctv-org/synctv/commit/${MAIN_SHA}
+          - vendors: https://github.com/synctv-org/vendors/commit/${VENDORS_SHA}
+          - synctv-web: https://github.com/synctv-org/synctv-web/commit/${WEB_SHA}
+
+          The original licenses are retained.
+          EOF
+
+          cat > CUSTOM_CHANGES.md <<'EOF'
+          # Custom changes
+
+          ## Phase 1: mobile Emby playback compatibility
+
+          - MP4/M4V direct play is limited to H.264 with AAC/MP3.
+          - Other or uncertain video codecs request H.264 + AAC HLS from Emby.
+          - Sync, chat, Bilibili and other existing features remain intact.
+
+          ## Planned phase 2
+
+          - Per-user quality, audio and subtitle selection.
+          - Emby playback-session and progress reporting.
+          EOF
+
+          mkdir -p deploy
+          cat > deploy/docker-compose.synology.yml <<'EOF'
+          services:
+            synctv:
+              image: ghcr.io/navimikew/synctv-fix:full-source-phase1
+              container_name: synctv-fix
+              restart: unless-stopped
+              ports:
+                - "8080:8080/tcp"
+                - "8080:8080/udp"
+              volumes:
+                - /volume1/docker/synctv:/root/.synctv
+              environment:
+                PUID: "0"
+                PGID: "0"
+                UMASK: "022"
+                TZ: Asia/Shanghai
+          EOF
+
+          cat > .github/workflows/build-custom.yml <<'EOF'
+          name: build-custom-image
+
+          on:
+            push:
+              branches: [main, full-source-phase1]
+            pull_request:
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+            packages: write
+
+          jobs:
+            docker:
+              runs-on: ubuntu-24.04
+              steps:
+                - uses: actions/checkout@v4
+                - uses: docker/setup-buildx-action@v3
+                - name: Login to GHCR
+                  if: github.event_name != 'pull_request'
+                  uses: docker/login-action@v3
+                  with:
+                    registry: ghcr.io
+                    username: ${{ github.actor }}
+                    password: ${{ secrets.GITHUB_TOKEN }}
+                - name: Build and optionally push
+                  uses: docker/build-push-action@v6
+                  with:
+                    context: .
+                    platforms: linux/amd64
+                    push: ${{ github.event_name != 'pull_request' }}
+                    tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+                    cache-from: type=gha
+                    cache-to: type=gha,mode=max
+          EOF
+
+          git add -A
+          git commit -m "fix: use mobile-compatible Emby playback profile"
+          git push origin HEAD:full-source-phase1 --force
