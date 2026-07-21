@@ -1,179 +1,64 @@
-<div align="center">
-  <a href="https://github.com/synctv-org/docs"><img height="100px" alt="logo" src="https://cdn.jsdelivr.net/gh/synctv-org/docs@main/logo/logo.png"/></a>
-  <p><em>👫A program that allows you to watch movies/live broadcasts together remotely🍿</em></p>
-    <div>
-        <a href="https://goreportcard.com/report/github.com/synctv-org/synctv">
-            <img src="https://goreportcard.com/badge/github.com/synctv-org/synctv" alt="latest version" />
-        </a>
-        <a href="https://github.com/synctv-org/synctv/blob/main/LICENSE">
-            <img src="https://img.shields.io/github/license/synctv-org/synctv" alt="License" />
-        </a>
-        <a href="https://github.com/synctv-org/synctv/actions?query=workflow%3Arelease">
-            <img src="https://img.shields.io/github/actions/workflow/status/synctv-org/synctv/release.yml?branch=main" alt="Release status" />
-        </a>
-        <a href="https://github.com/synctv-org/synctv/releases">
-            <img src="https://img.shields.io/github/release/synctv-org/synctv" alt="latest version" />
-        </a>
-    </div>
-    <div>
-        <a href="https://github.com/synctv-org/synctv/releases">
-            <img src="https://img.shields.io/github/downloads/synctv-org/synctv/total?color=%239F7AEA&logo=github" alt="Downloads" />
-        </a>
-        <a href="https://hub.docker.com/r/synctvorg/synctv">
-            <img src="https://img.shields.io/docker/pulls/synctvorg/synctv?color=%2348BB78&logo=docker&label=pulls" alt="Downloads" />
-        </a>
-    </div>
-</div>
+# SyncTV Fix
 
----
+这是基于 SyncTV 完整源码维护的群晖 Docker 定制版，包含后端、`vendors` 和 `synctv-web`，后续可以统一修改 Emby、Bilibili、播放器、聊天和移动端功能。
 
-English | [中文](./README-CN.md)
+## 当前修复
 
-# What is SyncTV?
+第一阶段修复 Emby 手机端兼容问题：
 
-SyncTV is a program that allows you to watch movies and live broadcasts together remotely. It provides features such as synchronized viewing, live streaming, and chat. With SyncTV, you can watch videos and live broadcasts with friends and family, no matter where they are.
+- `MP4/M4V + H.264 + AAC/MP3` 可以直接播放；
+- HEVC、VP9、AV1 等不确定格式由 Emby 输出 `H.264 + AAC` HLS；
+- 避免手机拿到不兼容的 `original.mp4` 后显示“不能自动播放”。
 
-SyncTV's synchronized viewing feature ensures that everyone watching the video is at the same point. This means that you can pause, fast forward, rewind, change playback speed, and other operations, and everyone else will be synchronized to the same point.
+## Docker 镜像
 
-# Features
+稳定镜像：
 
-- [x] Synchronized viewing
-  - [x] Videos Sync
-  - [x] Live streaming
-- [x] Theater
-  - [x] Chat
-  - [x] Bullet chat
-- [x] Proxy
-  - [x] Videos proxy
-  - [x] Live proxy
-  - [x] Proxy cache
-- [x] Parse video
-  - [x] Alist
-  - [x] Bilibili
-  - [x] Emby
-- [x] Parse live
-  - [x] Bilibili
-- [x] WebRTC online call
-  - [x] Audio
-  - [ ] Video
-  - [ ] Screen
-
----
-
-# Demo
-
-[https://demo.synctv.wiki](https://demo.synctv.wiki)
-
----
-
-# Installation
-
-## Binary
-
-You can download the latest binary from [release page](https://github.com/synctv-org/synctv/releases) and install it manually.
-
-## Script
-
-You can use the script to install and run SyncTV.
-
-```bash
-sudo -v ; curl -fsSL https://raw.githubusercontent.com/synctv-org/synctv/main/script/install.sh | sudo bash -s -- -v latest
+```text
+ghcr.io/navimikew/synctv-fix:latest
 ```
 
-## Docker
+每次 `main` 更新并构建成功后，`latest` 会自动更新。同时会生成不可变的提交镜像：
 
-You can also use docker to install and run SyncTV.
-
-```bash
-docker run -d --name synctv -v /opt/synctv:/root/.synctv -p 8080:8080 synctvorg/synctv
+```text
+ghcr.io/navimikew/synctv-fix:sha-<完整提交SHA>
 ```
 
-## Docker compose
+## 群晖更新
 
-[docker-compose.yml](./script/docker-compose.yml)
-
-## Helm
-
-### Helm Install
+使用 Compose 时：
 
 ```bash
-helm repo add synctv https://docs.synctv.wiki/helm-charts
-helm repo update synctv
-helm upgrade --install synctv synctv/synctv \
-  -n synctv --create-namespace \
-  --set ingress.enabled=true \
-  --set ingress.className=nginx \
-  --set 'ingress.hosts[0].host=<yourdomain.com>' \
-  --set 'ingress.hosts[0].secretName=<yourdomain-secretName>'
+docker compose pull
+docker compose up -d
 ```
 
-### Helm Upgrade
+群晖 Container Manager 中也可以打开项目，选择“操作 → 构建/更新”重新拉取 `latest`。
 
-```bash
-helm repo update synctv
-helm upgrade --install synctv synctv/synctv \
-  -n synctv \
-  --reuse-values
+示例配置见：
+
+```text
+deploy/docker-compose.synology.yml
 ```
 
-> More Helm Values:[helm-values](helm-values.md)
+首次部署前请把示例中的：
 
-### Helm Uninstall
-
-```bash
-helm uninstall -n synctv synctv
+```text
+/volume1/docker/synctv
 ```
 
----
+替换成你现有 SyncTV 的真实数据目录。不要删除或覆盖现有数据目录，建议先备份。
 
-# Run
+## 安全提醒
 
-`synctv server` to start the server
+不要把 Emby API Key、密码、Token、PlaySessionId 或完整播放 URL 提交到仓库。已经公开过的 Emby API Key 应撤销并重新生成。
 
-```bash
-synctv server
-# or
-synctv server --data-dir ./
-```
+## 上游与许可
 
-> Every time it starts, it will check for users with root permissions. If none are found, it will initialize a `root` user with the password `root`. Please change the username and password promptly.
->
-> The user registration function requires the use of any `OAuth2` service, such as `Google`, `Github`, etc. For specific configuration, please refer to [documentation](https://docs.synctv.wiki/#/oauth2).
+本项目基于以下项目修改：
 
-# Documentation
+- `synctv-org/synctv`
+- `synctv-org/vendors`
+- `synctv-org/synctv-web`
 
-[https://docs.synctv.wiki](https://docs.synctv.wiki)
-
-# Special sponsors
-
-- [亚洲云](https://www.asiayun.com) supports the server for the [demo](https://demo.synctv.wiki) site.
-- [SwarmCloud](https://swarmcloud.net/) ¥ 200 and provides video P2P acceleration.
-  - When the server network bandwidth is insufficient, you can consider using P2P video acceleration technology.
-  - If you want to use P2P video acceleration technology for free, you can view the documentation [P2P video acceleration](https://docs.synctv.wiki/#/p2p).
-- [LucasYuYu](https://github.com/LucasYuYu) ¥ 18.88
-- [爱发电用户_5vDc](https://afdian.com/u/48fa38ce0e0211ef944d5254001e7c00) ¥ 228
-- masha
-- [T-rabbit](https://github.com/T-rabbit) ¥ 5
-- 矿神SPK源 ¥ 100
-
-# Contributors
-
-Thanks goes to these wonderful people:
-
-[![Contributors](https://contrib.nn.ci/api?repo=synctv-org/synctv&repo=synctv-org/synctv-web&repo=synctv-org/docs)](https://github.com/synctv-org/synctv/graphs/contributors)
-
-# License
-
-The `SyncTV` is open-source software licensed under the AGPL-3.0 license.
-
-# Disclaimer
-
-- This program is a free and open-source project. It aims to play video files on the internet, making it convenient for multiple people to watch videos and learn golang together.
-- Please comply with relevant laws and regulations when using it, and do not abuse it.
-- The program only plays video files/forwards traffic on the client-side and will not intercept, store, or tamper with any user data.
-- Before using the program, you should understand and assume the corresponding risks, including but not limited to copyright disputes, legal restrictions, etc., which are not related to the program.
-- If there is any infringement, please contact me via [email](mailto:pyh1670605849@gmail.com), and it will be dealt with promptly.
-
-# Discussion
-
-- [Telegram](https://t.me/synctv)
+具体固定版本见 `UPSTREAM.md`。原项目许可证和版权信息均保留。
