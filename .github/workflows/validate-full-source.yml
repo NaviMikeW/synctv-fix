@@ -20,6 +20,22 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          build-args: |
+            VERSION=v0.9.15
           tags: synctv-fix:validation
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Verify embedded version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(docker run --rm --entrypoint /usr/local/bin/synctv synctv-fix:validation version)"
+          printf '%s\n' "$output"
+          grep -Fq 'synctv v0.9.15' <<<"$output"
+          if grep -Fq 'synctv dev' <<<"$output"; then
+            echo 'unexpected dev-mode build' >&2
+            exit 1
+          fi
+          commit_line="$(grep -F -- '- git/commit:' <<<"$output")"
+          test -n "${commit_line#*- git/commit: }"
