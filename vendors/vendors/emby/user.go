@@ -303,12 +303,6 @@ func (c *Client) UserPlaybackInfo(id string, opts ...UserPlaybackInfoOption) (*P
 			MusicStreamingTranscodingBitrate: 384000,
 			DirectPlayProfiles: []DirectPlayProfile{
 				{
-					Container:  "webm",
-					Type:       "Video",
-					VideoCodec: "vp8,vp9,av1",
-					AudioCodec: "vorbis,opus",
-				},
-				{
 					Container:  "mp4,m4v",
 					Type:       "Video",
 					VideoCodec: "h264",
@@ -318,7 +312,7 @@ func (c *Client) UserPlaybackInfo(id string, opts ...UserPlaybackInfoOption) (*P
 					Container:  "mov",
 					Type:       "Video",
 					VideoCodec: "h264",
-					AudioCodec: "aac,mp3,mp2,opus,flac,vorbis",
+					AudioCodec: "aac,mp3",
 				},
 				{
 					Container: "opus",
@@ -522,7 +516,7 @@ func (c *Client) UserPlaybackInfo(id string, opts ...UserPlaybackInfoOption) (*P
 						{
 							Condition:  "EqualsAny",
 							Property:   "VideoProfile",
-							Value:      "high|main|baseline|constrained baseline|high 10",
+							Value:      "high|main|baseline|constrained baseline",
 							IsRequired: false,
 						},
 						{
