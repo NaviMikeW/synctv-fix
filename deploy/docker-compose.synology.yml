@@ -1,0 +1,16 @@
+services:
+  synctv:
+    image: ghcr.io/navimikew/synctv-fix:latest
+    container_name: synctv-fix
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "8080:8080/tcp"
+      - "8080:8080/udp"
+    volumes:
+      - /volume1/docker/synctv:/root/.synctv
+    environment:
+      PUID: "0"
+      PGID: "0"
+      UMASK: "022"
+      TZ: Asia/Shanghai

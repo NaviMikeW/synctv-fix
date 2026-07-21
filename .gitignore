@@ -1,0 +1,11 @@
+/log
+/public/dist/*
+!*.gitkeep
+.DS_Store
+/build
+*.db
+.vscode
+*.local
+/cross
+synctv
+synctv.*
