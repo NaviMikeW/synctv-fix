@@ -10,7 +10,7 @@ const qualityIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 51
 </svg>`;
 
 const audioIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" height="18">
-    <path fill="#fff" d="M256 80C149.9 80 62.4 159.4 49.6 262c9.4-3.8 19.6-6 30.4-6c26.5 0 48 21.5 48 48l0 128c0 26.5-21.5 48-48 48c-44.2 0-80-35.8-80-80l0-16 0-48 0-48C0 146.6 114.6 32 256 32s256 114.6 256 256l0 48 0 48 0 16c0 44.2-35.8 80-80 80c-26.5 0-48-21.5-48-48l0-128c0-26.5 21.5-48 48-48c10.8 0 21 2.1 30.4 6C449.6 159.4 362.1 80 256 80z"/>
+    <path fill="#fff" d="M256 80C149.9 80 62.4 159.4 49.6 262c9.4-3.8 19.6-6 30.4-6c26.5 0 48 21.5 48 48l0 128c0 26.5-21.5 48-48 48c-44.2 0-80-35.8-80-80l0-16 0-48 0-48C0 146.6 114.6 32 256 32s256 114.6 256 256l0 48 0 48 0 16c0 44.2-35.8 80-80 80c-26.5 0-48-21.5-48-48l0-128c0-26.5 21.5-48 48-48c10.8 0 20.4 2.1 30.4 6C449.6 159.4 362.1 80 256 80z"/>
 </svg>`;
 
 function uniqBy(array: any[], property: string) {
@@ -151,8 +151,19 @@ export default function artplayerPluginMediaControl() {
       return null;
     }
 
-    function currentMediaURL() {
-      return ((art as any).url as string) || art.option.url || "";
+    function mediaURLCandidates(): string[] {
+      const rawCandidates = [
+        art.option.url,
+        (art as any).url as string | undefined,
+        art.video?.currentSrc,
+        art.video?.src
+      ];
+      const seen = new Set<string>();
+      return rawCandidates.filter((candidate): candidate is string => {
+        if (!candidate || seen.has(candidate)) return false;
+        seen.add(candidate);
+        return true;
+      });
     }
 
     function removeQualityControl() {
@@ -176,39 +187,45 @@ export default function artplayerPluginMediaControl() {
       if (art.setting.find("audio")) art.setting.remove("audio");
       destroyOldCustomPlayLib(art);
       art.option.type = "m3u8";
+      art.option.url = url;
       art.url = url;
     }
 
     function updateSyntheticEmbyQualityControl(): boolean {
-      const mediaURL = currentMediaURL();
-      const options = buildEmbyQualityOptions(mediaURL);
-      if (options.length <= 1) return false;
+      for (const mediaURL of mediaURLCandidates()) {
+        const options = buildEmbyQualityOptions(mediaURL);
+        if (options.length <= 1) continue;
 
-      const currentBitrate = embyVideoBitrate(mediaURL);
-      const selector = options.map((option) => ({
-        html: option.name,
-        value: option.url,
-        default:
-          currentBitrate !== undefined &&
-          Math.abs(option.bitrate - currentBitrate) / currentBitrate < 0.08
-      }));
+        const currentBitrate = embyVideoBitrate(mediaURL);
+        const selector = options.map((option) => ({
+          html: option.name,
+          value: option.url,
+          default:
+            currentBitrate !== undefined &&
+            Math.abs(option.bitrate - currentBitrate) / currentBitrate < 0.08
+        }));
 
-      updateControl("quality", "画质", selector, qualityIcon, (item: any) => {
-        switchEmbyQuality(item.value);
-        art.notice.show = `画质: ${item.html}`;
-        return "画质";
-      });
-      return true;
+        updateControl("quality", "画质", selector, qualityIcon, (item: any) => {
+          switchEmbyQuality(item.value);
+          art.notice.show = `画质: ${item.html}`;
+          return "画质";
+        });
+        return true;
+      }
+      return false;
     }
 
     function updateQualityControl(provider: MediaProvider) {
       const qualities = provider.getQualities();
 
       // Emby frequently returns a master playlist containing only one rendition.
-      // In that case Artplayer's native HLS level menu is meaningless, so expose
-      // independent per-viewer bitrate URLs instead.
-      if (qualities.length <= 1) {
-        if (!updateSyntheticEmbyQualityControl()) removeQualityControl();
+      // Prefer independent per-viewer bitrate URLs. If URL detection cannot build
+      // them, keep the provider's original menu instead of removing the control.
+      if (qualities.length <= 1 && updateSyntheticEmbyQualityControl()) {
+        return;
+      }
+      if (!qualities.length) {
+        removeQualityControl();
         return;
       }
 
@@ -217,7 +234,8 @@ export default function artplayerPluginMediaControl() {
 
       const getName = (level: QualityLevel) => {
         if (level.name) return level.name;
-        return level.height ? `${level.height}P` : auto;
+        if (level.height) return `${level.height}P`;
+        return qualities.length === 1 ? "当前画质" : auto;
       };
 
       const currentQuality = provider.getCurrentQuality();
