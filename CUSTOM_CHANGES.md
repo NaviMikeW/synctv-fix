@@ -9,6 +9,14 @@
 - Other or uncertain video codecs request H.264 + AAC HLS from Emby.
 - Sync, chat, Bilibili and other existing features remain intact.
 
+## Phase 1.2: Emby dashboard playback sessions
+
+- Active SyncTV rooms report playback start, progress, pause, resume, seek, rate changes and stop events to Emby.
+- Emby shows one playback session per SyncTV room, using the Emby account bound by the movie creator.
+- Progress is recalibrated every 10 seconds and immediately after player interactions.
+- Sessions stop when the room has no viewers, the current item changes, or the room leaves the server cache.
+- Emby credentials remain on the SyncTV backend and are never sent to the browser for session reporting.
+
 ## Build metadata
 
 - Docker builds inject `VERSION=v0.9.15`, preventing SyncTV's implicit `dev` defaults.
@@ -17,4 +25,4 @@
 ## Planned phase 2
 
 - Per-user quality, audio and subtitle selection.
-- Emby playback-session and progress reporting.
+- Per-user Emby playback sessions when viewers use different sources or tracks.

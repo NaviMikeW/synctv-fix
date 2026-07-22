@@ -19,6 +19,7 @@ func Init(_ int) error {
 		}),
 	)
 	userCache = synccache.NewSyncCache[string, *User](time.Minute * 5)
+	startEmbyPlaybackReporter()
 
 	return nil
 }
