@@ -200,56 +200,70 @@ defineExpose({
               <template #append v-if="setting[1].append">{{ setting[1].append }}</template>
             </el-input>
           </el-form-item>
-          <el-form-item label="用户默认权限">
-            <div class="flex">
-              <el-select
-                v-model="userDefaultPermissions"
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                :disabled="!isAdmin && !can(RoomAdminPermission.PermissionSetRoomSettings)"
-              >
-                <el-option
-                  v-for="(item, i) in roomMemberPermissionKeys"
-                  :key="i"
-                  :label="
-                    roomMemberPermissionKeysTranslate[item.value as unknown as RoomMemberPermission]
-                  "
-                  :value="item.value"
-                />
-              </el-select>
-              <el-button
-                v-if="isAdmin && can(RoomAdminPermission.PermissionSetRoomSettings)"
-                @click="updateSet('user_default_permissions', computedUserDefaultPermissions)"
-                :loading="isUpdating('user_default_permissions')"
-                >更新</el-button
-              >
+          <el-form-item class="permission-form-item">
+            <div class="permission-editor">
+              <div class="permission-editor__label">用户默认权限</div>
+              <div class="permission-editor__controls">
+                <el-select
+                  v-model="userDefaultPermissions"
+                  class="permission-editor__select"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  :max-collapse-tags="2"
+                  placeholder="请选择用户默认权限"
+                  :disabled="!isAdmin && !can(RoomAdminPermission.PermissionSetRoomSettings)"
+                >
+                  <el-option
+                    v-for="(item, i) in roomMemberPermissionKeys"
+                    :key="i"
+                    :label="
+                      roomMemberPermissionKeysTranslate[item.value as unknown as RoomMemberPermission]
+                    "
+                    :value="item.value"
+                  />
+                </el-select>
+                <el-button
+                  v-if="isAdmin && can(RoomAdminPermission.PermissionSetRoomSettings)"
+                  class="permission-editor__button"
+                  @click="updateSet('user_default_permissions', computedUserDefaultPermissions)"
+                  :loading="isUpdating('user_default_permissions')"
+                  >更新</el-button
+                >
+              </div>
             </div>
           </el-form-item>
-          <el-form-item label="访客权限">
-            <div class="flex">
-              <el-select
-                v-model="guestPermissions"
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                :disabled="!isAdmin && !can(RoomAdminPermission.PermissionSetRoomSettings)"
-              >
-                <el-option
-                  v-for="(item, i) in roomMemberPermissionKeys"
-                  :key="i"
-                  :label="
-                    roomMemberPermissionKeysTranslate[item.value as unknown as RoomMemberPermission]
-                  "
-                  :value="item.value"
-                />
-              </el-select>
-              <el-button
-                v-if="isAdmin && can(RoomAdminPermission.PermissionSetRoomSettings)"
-                @click="updateSet('guest_permissions', computedGuestPermissions)"
-                :loading="isUpdating('guest_permissions')"
-                >更新</el-button
-              >
+          <el-form-item class="permission-form-item">
+            <div class="permission-editor">
+              <div class="permission-editor__label">访客权限</div>
+              <div class="permission-editor__controls">
+                <el-select
+                  v-model="guestPermissions"
+                  class="permission-editor__select"
+                  multiple
+                  collapse-tags
+                  collapse-tags-tooltip
+                  :max-collapse-tags="2"
+                  placeholder="请选择访客权限"
+                  :disabled="!isAdmin && !can(RoomAdminPermission.PermissionSetRoomSettings)"
+                >
+                  <el-option
+                    v-for="(item, i) in roomMemberPermissionKeys"
+                    :key="i"
+                    :label="
+                      roomMemberPermissionKeysTranslate[item.value as unknown as RoomMemberPermission]
+                    "
+                    :value="item.value"
+                  />
+                </el-select>
+                <el-button
+                  v-if="isAdmin && can(RoomAdminPermission.PermissionSetRoomSettings)"
+                  class="permission-editor__button"
+                  @click="updateSet('guest_permissions', computedGuestPermissions)"
+                  :loading="isUpdating('guest_permissions')"
+                  >更新</el-button
+                >
+              </div>
             </div>
           </el-form-item>
           <el-form-item label="房间密码">
@@ -288,3 +302,51 @@ defineExpose({
     </template>
   </el-drawer>
 </template>
+
+<style scoped>
+.permission-form-item :deep(.el-form-item__content) {
+  width: 100%;
+  margin-left: 0 !important;
+}
+
+.permission-editor {
+  width: 100%;
+  min-width: 0;
+}
+
+.permission-editor__label {
+  margin-bottom: 8px;
+  color: var(--el-text-color-regular);
+  font-size: var(--el-form-label-font-size);
+  line-height: 1.4;
+}
+
+.permission-editor__controls {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.permission-editor__select {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.permission-editor__button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .permission-editor__select {
+    flex-basis: 100%;
+    min-width: 100%;
+  }
+
+  .permission-editor__button {
+    margin-left: auto;
+  }
+}
+</style>
