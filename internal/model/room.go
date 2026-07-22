@@ -96,7 +96,7 @@ func DefaultRoomSettings() *RoomSettings {
 		Hidden:                 false,
 		DisableJoinNewUser:     false,
 		JoinNeedReview:         false,
-		UserDefaultPermissions: DefaultPermissions,
+		UserDefaultPermissions: DefaultPermissions | PermissionSetCurrentStatus,
 		DisableGuest:           false,
 		GuestPermissions:       NoPermission,
 
