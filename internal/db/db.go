@@ -27,6 +27,10 @@ func Init(d *gorm.DB, t conf.DatabaseType) error {
 		return err
 	}
 
+	if err = migrateLegacyPlaybackControlPermissions(); err != nil {
+		return err
+	}
+
 	err = initGuestUser()
 	if err != nil {
 		return err
@@ -106,7 +110,6 @@ func Paginate(page, pageSize int) func(db *gorm.DB) *gorm.DB {
 		}
 
 		offset := (page - 1) * pageSize
-
 		return db.Offset(offset).Limit(pageSize)
 	}
 }
@@ -406,32 +409,4 @@ func HandleNotFound(err error, errMsg ...string) error {
 		return NotFoundError(strings.Join(errMsg, " "))
 	}
 	return err
-}
-
-func Transactional(txFunc func(*gorm.DB) error) (err error) {
-	tx := db.Begin()
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
-		}
-	}()
-
-	err = txFunc(tx)
-
-	return err
-}
-
-// Helper function to handle update results
-func HandleUpdateResult(result *gorm.DB, entityName string) error {
-	if result.Error != nil {
-		return HandleNotFound(result.Error, entityName)
-	}
-
-	if result.RowsAffected == 0 {
-		return NotFoundError(entityName)
-	}
-
-	return nil
 }

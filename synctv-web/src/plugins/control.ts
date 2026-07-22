@@ -1,6 +1,8 @@
 import Artplayer from "artplayer";
 import type Hls from "hls.js";
 import type { MediaPlayerClass } from "dashjs";
+import { destroyOldCustomPlayLib } from "@/utils";
+import { buildEmbyQualityOptions, embyVideoBitrate } from "@/utils/embyQuality";
 
 // SVG icons
 const qualityIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" height="18">
@@ -149,9 +151,66 @@ export default function artplayerPluginMediaControl() {
       return null;
     }
 
+    function currentMediaURL() {
+      return ((art as any).url as string) || art.option.url || "";
+    }
+
+    function removeQualityControl() {
+      if (art.controls["quality"]) art.controls.remove("quality");
+      if (art.setting.find("quality")) art.setting.remove("quality");
+    }
+
+    function switchEmbyQuality(url: string) {
+      const syncPlugin = art.plugins["syncPlugin"];
+      const status = syncPlugin?.currentStatus?.();
+
+      art.loading.show = true;
+      art.once("video:canplay", () => {
+        if (status) syncPlugin?.setAndNoPublishStatus?.(status);
+        art.emit("restart", url);
+      });
+
+      if (art.controls["quality"]) art.controls.remove("quality");
+      if (art.setting.find("quality")) art.setting.remove("quality");
+      if (art.controls["audio"]) art.controls.remove("audio");
+      if (art.setting.find("audio")) art.setting.remove("audio");
+      destroyOldCustomPlayLib(art);
+      art.option.type = "m3u8";
+      art.url = url;
+    }
+
+    function updateSyntheticEmbyQualityControl(): boolean {
+      const mediaURL = currentMediaURL();
+      const options = buildEmbyQualityOptions(mediaURL);
+      if (options.length <= 1) return false;
+
+      const currentBitrate = embyVideoBitrate(mediaURL);
+      const selector = options.map((option) => ({
+        html: option.name,
+        value: option.url,
+        default:
+          currentBitrate !== undefined &&
+          Math.abs(option.bitrate - currentBitrate) / currentBitrate < 0.08
+      }));
+
+      updateControl("quality", "画质", selector, qualityIcon, (item: any) => {
+        switchEmbyQuality(item.value);
+        art.notice.show = `画质: ${item.html}`;
+        return "画质";
+      });
+      return true;
+    }
+
     function updateQualityControl(provider: MediaProvider) {
       const qualities = provider.getQualities();
-      if (!qualities.length) return;
+
+      // Emby frequently returns a master playlist containing only one rendition.
+      // In that case Artplayer's native HLS level menu is meaningless, so expose
+      // independent per-viewer bitrate URLs instead.
+      if (qualities.length <= 1) {
+        if (!updateSyntheticEmbyQualityControl()) removeQualityControl();
+        return;
+      }
 
       const auto = "自动";
       const title = "画质";
@@ -260,7 +319,11 @@ export default function artplayerPluginMediaControl() {
 
     function update() {
       const provider = getProvider();
-      if (!provider) return;
+      if (!provider) {
+        // Safari may use native HLS without exposing an hls.js provider.
+        if (!updateSyntheticEmbyQualityControl()) removeQualityControl();
+        return;
+      }
 
       updateQualityControl(provider);
       updateAudioControl(provider);
