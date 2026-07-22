@@ -320,7 +320,8 @@ export default function artplayerPluginMediaControl() {
     function update() {
       const provider = getProvider();
       if (!provider) {
-        removeQualityControl();
+        // Safari may use native HLS without exposing an hls.js provider.
+        if (!updateSyntheticEmbyQualityControl()) removeQualityControl();
         return;
       }
 
