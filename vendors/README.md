@@ -1,8 +1,5 @@
 # Vendors
 
-## Run
-```bash
-make init
-make build
-./build/vendors server
-```
+SyncTV vendor integration component.
+
+See the repository license files for details.
