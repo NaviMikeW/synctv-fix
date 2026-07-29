@@ -19,6 +19,13 @@ import EditIcon from "./components/icons/Edit.vue";
 import TrashIcon from "./components/icons/Trash.vue";
 import PersonIcon from "./components/icons/Person.vue";
 
+// 旧版本可能曾在 localStorage 中明文保存密码，只清理这个遗留键。
+try {
+  localStorage.removeItem("password");
+} catch (error) {
+  console.warn("清理旧密码缓存失败", error);
+}
+
 const app = createApp(App);
 app
   .component("SunIcon", SunIcon)
