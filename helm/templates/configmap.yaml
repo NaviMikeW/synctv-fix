@@ -7,5 +7,4 @@ data:
   DATABASE_HOST: synctv-postgresql
   DATABASE_PORT: "5432"
   DATABASE_USER: postgres
-  DATABASE_PASSWORD: synctv
   DATABASE_NAME: postgres
