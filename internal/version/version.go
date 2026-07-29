@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/google/go-github/v56/github"
-	log "github.com/sirupsen/logrus"
-	"github.com/synctv-org/synctv/cmd/flags"
 	"github.com/synctv-org/synctv/internal/model"
 	"github.com/synctv-org/synctv/internal/settings"
 	"github.com/synctv-org/synctv/utils"
@@ -170,54 +168,6 @@ func (v *Info) NeedUpdate(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (v *Info) SelfUpdate(ctx context.Context) (err error) {
-	switch {
-	case flags.Global.Dev:
-		log.Info("self update: dev mode, update to latest dev version")
-	case v.Current() != "dev":
-		latest, err := v.Latest(ctx)
-		if err != nil {
-			return err
-		}
-
-		comp, err := utils.CompVersion(v.Current(), latest)
-		if err != nil {
-			return err
-		}
-
-		switch comp {
-		case utils.VersionEqual:
-			log.Infof("self update: current version is latest: %s", v.Current())
-			return nil
-		case utils.VersionLess:
-			log.Infof(
-				"self update: current version is less than latest: %s -> %s",
-				v.Current(),
-				latest,
-			)
-		case utils.VersionGreater:
-			log.Infof(
-				"self update: current version is greater than latest: %s ? %s",
-				v.Current(),
-				latest,
-			)
-
-			return nil
-		}
-	default:
-		log.Info("self update: current version is dev, force update")
-	}
-
-	var url string
-	if flags.Global.Dev {
-		url, err = v.DevBinaryURL(ctx)
-	} else {
-		url, err = v.LatestBinaryURL(ctx)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	return SelfUpdate(ctx, url)
+func (v *Info) SelfUpdate(_ context.Context) error {
+	return ErrSelfUpdateDisabled
 }
