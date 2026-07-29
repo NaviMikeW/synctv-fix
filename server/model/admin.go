@@ -39,16 +39,7 @@ func (aur *AddUserReq) Validate() error {
 		return ErrUsernameHasInvalidChar
 	}
 
-	switch {
-	case aur.Password == "":
-		return FormatEmptyPasswordError("user")
-	case len(aur.Password) > 32:
-		return ErrPasswordTooLong
-	case !alnumPrintReg.MatchString(aur.Password):
-		return ErrPasswordHasInvalidChar
-	}
-
-	return nil
+	return validateNewUserPassword(aur.Password)
 }
 
 func (aur *AddUserReq) Decode(ctx *gin.Context) error {
@@ -65,16 +56,7 @@ func (aur *AdminUserPasswordReq) Validate() error {
 		return ErrInvalidID
 	}
 
-	switch {
-	case aur.Password == "":
-		return FormatEmptyPasswordError("user")
-	case len(aur.Password) > 32:
-		return ErrPasswordTooLong
-	case !alnumPrintReg.MatchString(aur.Password):
-		return ErrPasswordHasInvalidChar
-	}
-
-	return nil
+	return validateNewUserPassword(aur.Password)
 }
 
 func (aur *AdminUserPasswordReq) Decode(ctx *gin.Context) error {
