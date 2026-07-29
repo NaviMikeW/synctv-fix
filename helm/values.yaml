@@ -1,7 +1,9 @@
 # Default values for synctv.
 synctv:
   image:
-    repository: synctvorg/synctv
+    repository: ghcr.io/navimikew/synctv-fix
+    # Required at install time. Use an immutable sha-* tag that you have
+    # validated; mutable latest is intentionally not a Helm default.
     tag: ""
     pullPolicy: IfNotPresent
   envConfigName: synctv-env
@@ -18,7 +20,9 @@ postgresql:
     repository: postgres
     tag: 16-alpine
     pullPolicy: IfNotPresent
-  password: synctv
+  # Required at install time. Store the real value outside values files and
+  # pass it with --set-string or a protected values file.
+  password: ""
   storage:
     size: 1Gi
     storageClass: ""
