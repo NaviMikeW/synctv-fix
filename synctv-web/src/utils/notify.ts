@@ -24,13 +24,14 @@ class Notify {
 
   async show() {
     let div = document.createElement("div");
+    const title = document.createElement("h2");
+    const content = document.createElement("p");
     let nid = Date.now();
     div.className = "notifyyy";
     div.setAttribute("nid", String(nid));
-    div.innerHTML = `
-    <h2>${this.title}</h2>
-    <p>${this.content}</p>
-    `;
+    title.textContent = this.title;
+    content.textContent = this.content;
+    div.append(title, content);
     document.querySelector("#notifyBox")?.appendChild(div);
     setTimeout(() => {
       document.querySelector(`div[nid="${nid}"]`)?.remove();
