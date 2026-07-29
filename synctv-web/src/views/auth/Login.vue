@@ -16,9 +16,8 @@ const { settings, isAnySignupAllowed } = indexStore();
 const formData = ref({
   username: localStorage.getItem("uname") || "",
   email: localStorage.getItem("email") || "",
-  password: localStorage.getItem("password") || ""
+  password: ""
 });
-const savePwd = ref(false);
 const activeTab = ref("username");
 
 const redirect = useRouteQuery("redirect");
@@ -80,7 +79,6 @@ const login = async () => {
     updateToken(loginData.value.token);
     localStorage.setItem("uname", formData.value.username);
     localStorage.setItem("email", formData.value.email);
-    localStorage.setItem("password", savePwd.value ? formData.value.password : "");
 
     const state = await userInfo().execute({
       headers: {
@@ -150,15 +148,17 @@ onMounted(async () => {
 
 <template>
   <div class="room">
-    <form @submit.prevent="login" class="login-box">
+    <form @submit.prevent="login" class="login-box" autocomplete="on">
       <el-tabs v-model="activeTab">
         <el-tab-pane label="用户名登录" name="username">
           <input
             v-if="activeTab === 'username'"
             class="l-input"
             type="text"
+            name="username"
             v-model="formData.username"
             placeholder="用户名"
+            autocomplete="username"
             required
           />
         </el-tab-pane>
@@ -167,8 +167,10 @@ onMounted(async () => {
             v-if="activeTab === 'email'"
             class="l-input"
             type="email"
+            name="username"
             v-model="formData.email"
             placeholder="邮箱"
+            autocomplete="username"
             required
           />
         </el-tab-pane>
@@ -177,15 +179,18 @@ onMounted(async () => {
       <input
         class="l-input"
         type="password"
+        name="password"
         v-model="formData.password"
         placeholder="密码"
+        autocomplete="current-password"
         required
       />
       <br />
       <div class="text-sm"><b>注意：</b>所有输入框最大只可输入32个字符</div>
       <div>
-        <input class="w-auto" type="checkbox" v-model="savePwd" />
-        <label title="明文保存到本机哦~">&nbsp;记住密码</label>
+        <span class="text-sm text-zinc-500 dark:text-zinc-400">
+          如需记住密码，请使用浏览器自带的密码管理器
+        </span>
 
         <a
           v-if="settings?.emailEnable"
