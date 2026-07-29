@@ -21,9 +21,12 @@ import (
 )
 
 const (
-	maxInterval          = 10
-	MaxChatMessageLength = 4096
+	maxInterval             = 10
+	MaxChatMessageLength    = 4096
+	MaxWebSocketMessageSize = 1 << 20
 )
+
+var ErrWebSocketMessageTooLarge = errors.New("websocket message exceeds maximum size")
 
 func NewWebSocketHandler(wss *utils.WebSocket) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -52,6 +55,8 @@ func isNormalCloseError(err error) bool {
 
 func NewWSMessageHandler(u *op.User, r *op.Room, l *log.Entry) func(c *websocket.Conn) error {
 	return func(c *websocket.Conn) error {
+		c.SetReadLimit(MaxWebSocketMessageSize)
+
 		client, err := r.NewClient(u, c)
 		if err != nil {
 			l.Errorf("ws: register client error: %v", err)
@@ -190,6 +195,14 @@ func handleReaderMessage(c *op.Client, l *log.Entry) error {
 func readMessage(c *op.Client) (*pb.Message, error) {
 	t, rd, err := c.NextReader()
 	if err != nil {
+		if errors.Is(err, websocket.ErrReadLimit) {
+			return nil, fmt.Errorf(
+				"%w: limit is %d bytes",
+				ErrWebSocketMessageTooLarge,
+				MaxWebSocketMessageSize,
+			)
+		}
+
 		return nil, fmt.Errorf("get next reader error: %w", err)
 	}
 
@@ -197,7 +210,7 @@ func readMessage(c *op.Client) (*pb.Message, error) {
 		return nil, fmt.Errorf("receive unknown message type: %d", t)
 	}
 
-	data, err := io.ReadAll(rd)
+	data, err := readWebSocketPayload(rd, MaxWebSocketMessageSize)
 	if err != nil {
 		return nil, fmt.Errorf("read message error: %w", err)
 	}
@@ -208,6 +221,31 @@ func readMessage(c *op.Client) (*pb.Message, error) {
 	}
 
 	return &msg, nil
+}
+
+func readWebSocketPayload(rd io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(rd, limit+1))
+	if err != nil {
+		if errors.Is(err, websocket.ErrReadLimit) {
+			return nil, fmt.Errorf(
+				"%w: limit is %d bytes",
+				ErrWebSocketMessageTooLarge,
+				limit,
+			)
+		}
+
+		return nil, err
+	}
+
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf(
+			"%w: limit is %d bytes",
+			ErrWebSocketMessageTooLarge,
+			limit,
+		)
+	}
+
+	return data, nil
 }
 
 func handleElementMsg(cli *op.Client, msg *pb.Message) error {
@@ -388,21 +426,30 @@ func calculateTimeDiff(timestamp int64) float64 {
 }
 
 func handleChatMessage(cli *op.Client, message string) error {
-	if message == "" {
-		return sendErrorMessage(cli, "message is empty")
+	sanitizedMessage, err := prepareChatMessage(message)
+	if err != nil {
+		return sendErrorMessage(cli, err.Error())
 	}
 
-	sanitizedMessage := template.HTMLEscapeString(message)
-	if len(sanitizedMessage) > MaxChatMessageLength {
-		return sendErrorMessage(cli, "message too long")
-	}
-
-	err := cli.SendChatMessage(sanitizedMessage)
+	err = cli.SendChatMessage(sanitizedMessage)
 	if err != nil && errors.Is(err, model.ErrNoPermission) {
 		return sendErrorMessage(cli, "failed to send message due to permission issue")
 	}
 
 	return err
+}
+
+func prepareChatMessage(message string) (string, error) {
+	if message == "" {
+		return "", errors.New("message is empty")
+	}
+	if len(message) > MaxChatMessageLength {
+		return "", errors.New("message too long")
+	}
+
+	// Keep the server-side escaping for older clients. New clients decode these
+	// five entities back to text before using text-only rendering sinks.
+	return template.HTMLEscapeString(message), nil
 }
 
 func handleStatusMessage(cli *op.Client, msg *pb.Message, timeDiff float64) error {
