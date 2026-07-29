@@ -54,12 +54,12 @@ jobs:
 
           set +e
           image_tag_error="$(
-            helm lint ./helm \
+            helm template synctv ./helm \
               --set-string postgresql.password='Validation-DB-2026!' 2>&1
           )"
           image_tag_status=$?
           database_password_error="$(
-            helm lint ./helm \
+            helm template synctv ./helm \
               --set-string synctv.image.tag=sha-validation 2>&1
           )"
           database_password_status=$?
