@@ -10,7 +10,7 @@ import (
 	"github.com/synctv-org/synctv/internal/db"
 	"github.com/synctv-org/synctv/internal/email"
 	"github.com/synctv-org/synctv/internal/model"
-	"github.com/synctv-org/synctv/internal/password"
+	passwordpolicy "github.com/synctv-org/synctv/internal/password"
 	"github.com/synctv-org/synctv/internal/provider"
 	"github.com/synctv-org/synctv/internal/settings"
 	pb "github.com/synctv-org/synctv/proto/message"
@@ -75,7 +75,7 @@ func (u *User) SetPassword(password string) error {
 		return errors.New("guest cannot set password")
 	}
 
-	if err := password.Validate(password); err != nil {
+	if err := passwordpolicy.Validate(password); err != nil {
 		return err
 	}
 
