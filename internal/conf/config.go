@@ -23,6 +23,9 @@ type Config struct {
 
 	// RateLimit
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
+
+	// Security
+	Security SecurityConfig `yaml:"security"`
 }
 
 func (c *Config) Save(file string) error {
@@ -48,5 +51,8 @@ func DefaultConfig() *Config {
 
 		// RateLimit
 		RateLimit: DefaultRateLimitConfig(),
+
+		// Security
+		Security: DefaultSecurityConfig(),
 	}
 }
