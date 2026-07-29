@@ -23,7 +23,10 @@ spec:
             - containerPort: {{ .Values.postgresql.service.port }}
           env:
             - name: POSTGRES_PASSWORD
-              value: {{ .Values.postgresql.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: synctv-secrets
+                  key: DATABASE_PASSWORD
           volumeMounts:
             - name: postgresql-storage
               mountPath: /var/lib/postgresql/data
