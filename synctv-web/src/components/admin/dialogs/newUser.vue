@@ -5,6 +5,12 @@ import type { FormInstance, FormRules } from "element-plus";
 import { newUserApi } from "@/services/apis/admin";
 import { userStore } from "@/stores/user";
 import { ROLE, role } from "@/types/User";
+import {
+  USER_PASSWORD_MAX_LENGTH,
+  USER_PASSWORD_MIN_LENGTH,
+  USER_PASSWORD_POLICY_MESSAGE,
+  USER_PASSWORD_PRINTABLE_ASCII_PATTERN
+} from "@/utils/userPassword";
 
 const { token, isLogin } = userStore();
 const emits = defineEmits(["updateUserList"]);
@@ -41,7 +47,17 @@ const rules = reactive<FormRules<FormData>>({
   ],
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 1, max: 32, message: "长度在 1 ~ 32 之间", trigger: "blur" }
+    {
+      min: USER_PASSWORD_MIN_LENGTH,
+      max: USER_PASSWORD_MAX_LENGTH,
+      message: USER_PASSWORD_POLICY_MESSAGE,
+      trigger: "blur"
+    },
+    {
+      pattern: USER_PASSWORD_PRINTABLE_ASCII_PATTERN,
+      message: USER_PASSWORD_POLICY_MESSAGE,
+      trigger: "blur"
+    }
   ],
   role: [{ required: true, message: "请选择用户组", trigger: "blur" }]
 });
@@ -90,7 +106,12 @@ const newUser = async () => {
           <el-input v-model="formData.username" type="text" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
-          <el-input v-model="formData.password" type="text" />
+          <el-input
+            v-model="formData.password"
+            type="password"
+            autocomplete="new-password"
+            show-password
+          />
         </el-form-item>
         <el-form-item label="权限组" prop="role">
           <el-select v-model="formData.role" class="w-full" placeholder="权限组">
