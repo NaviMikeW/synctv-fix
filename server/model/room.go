@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	json "github.com/json-iterator/go"
 	dbModel "github.com/synctv-org/synctv/internal/model"
+	"github.com/synctv-org/synctv/internal/password"
 )
 
 var (
@@ -13,8 +14,9 @@ var (
 	ErrRoomNameTooLong        = errors.New("room name too long")
 	ErrRoomNameHasInvalidChar = errors.New("room name has invalid char")
 
-	ErrPasswordTooLong        = errors.New("password too long")
-	ErrPasswordHasInvalidChar = errors.New("password has invalid char")
+	ErrPasswordTooShort       = password.ErrTooShort
+	ErrPasswordTooLong        = password.ErrTooLong
+	ErrPasswordHasInvalidChar = password.ErrInvalidChar
 )
 
 type FormatEmptyPasswordError string
