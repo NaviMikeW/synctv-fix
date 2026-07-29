@@ -3,6 +3,8 @@ package middlewares
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,70 @@ var fieldsPool = sync.Pool{
 	New: func() any {
 		return make(logrus.Fields, 6)
 	},
+}
+
+const redactedQueryValue = "REDACTED"
+
+func isSensitiveQueryKey(key string) bool {
+	normalized := strings.NewReplacer(
+		"_", "",
+		"-", "",
+		".", "",
+	).Replace(strings.ToLower(key))
+
+	for _, marker := range []string{
+		"token",
+		"apikey",
+		"password",
+		"passwd",
+		"secret",
+		"signature",
+		"authorization",
+		"credential",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+
+	switch normalized {
+	case "auth", "code", "jwt", "pwd", "session", "sessionid", "sig", "sign", "state":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizedQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return ""
+	}
+
+	for key := range query {
+		if isSensitiveQueryKey(key) {
+			query.Set(key, redactedQueryValue)
+		}
+	}
+
+	return query.Encode()
+}
+
+func requestLogPath(routeTemplate, rawQuery string) string {
+	if routeTemplate == "" {
+		routeTemplate = "<unmatched>"
+	}
+
+	query := sanitizedQuery(rawQuery)
+	if query == "" {
+		return routeTemplate
+	}
+
+	return routeTemplate + "?" + query
 }
 
 func NewLog(l *logrus.Logger) gin.HandlerFunc {
@@ -42,7 +108,6 @@ func NewLog(l *logrus.Logger) gin.HandlerFunc {
 		c.Set("log", entry)
 
 		start := time.Now()
-		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery
 
 		c.Next()
@@ -61,12 +126,7 @@ func NewLog(l *logrus.Logger) gin.HandlerFunc {
 		param.ErrorMessage = c.Errors.ByType(gin.ErrorTypePrivate).String()
 
 		param.BodySize = c.Writer.Size()
-
-		if raw != "" {
-			path = path + "?" + raw
-		}
-
-		param.Path = path
+		param.Path = requestLogPath(c.FullPath(), raw)
 
 		logColor(entry, param)
 	}
