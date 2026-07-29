@@ -3,6 +3,7 @@ import type Hls from "hls.js";
 import type { MediaPlayerClass } from "dashjs";
 import { destroyOldCustomPlayLib } from "@/utils";
 import { buildEmbyQualityOptions, embyVideoBitrate } from "@/utils/embyQuality";
+import { textToSafeHtml } from "@/utils/safeHtml";
 
 // SVG icons
 const qualityIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" height="18">
@@ -198,7 +199,7 @@ export default function artplayerPluginMediaControl() {
 
         const currentBitrate = embyVideoBitrate(mediaURL);
         const selector = options.map((option) => ({
-          html: option.name,
+          html: textToSafeHtml(option.name),
           value: option.url,
           default:
             currentBitrate !== undefined &&
@@ -243,7 +244,7 @@ export default function artplayerPluginMediaControl() {
 
       const selector = uniqBy(
         qualities.map((item, index) => ({
-          html: getName(item),
+          html: textToSafeHtml(getName(item)),
           value: index,
           default: currentQuality === index && !isAuto
         })),
@@ -252,7 +253,7 @@ export default function artplayerPluginMediaControl() {
 
       if (provider.setAutoQuality) {
         selector.push({
-          html: auto,
+          html: textToSafeHtml(auto),
           value: -1,
           default: isAuto
         });
@@ -280,7 +281,7 @@ export default function artplayerPluginMediaControl() {
 
       const selector = uniqBy(
         tracks.map((item, index) => ({
-          html: getName(item),
+          html: textToSafeHtml(getName(item)),
           value: index,
           default: currentTrack === index
         })),
