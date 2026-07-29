@@ -37,7 +37,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:     "rejects non-ASCII",
-			password: "密码不能使用中文字符123456",
+			password: "中文密码12345678",
 			wantErr:  ErrInvalidChar,
 		},
 	}
