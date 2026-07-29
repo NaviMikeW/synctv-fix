@@ -17,6 +17,12 @@ import {
 import { strLengthLimit, getAppIcon } from "@/utils";
 import type { EmailRegForm, RegForm } from "@/types";
 import { ROLE } from "@/types/User";
+import {
+  isValidNewUserPassword,
+  USER_PASSWORD_MAX_LENGTH,
+  USER_PASSWORD_MIN_LENGTH,
+  USER_PASSWORD_POLICY_MESSAGE
+} from "@/utils/userPassword";
 
 const {
   settings,
@@ -89,6 +95,14 @@ const toSendRegCode = async () => {
 };
 
 const regDisable = ref(false);
+const validateNewPassword = (password: string) => {
+  if (!isValidNewUserPassword(password)) {
+    ElMessage.error(USER_PASSWORD_POLICY_MESSAGE);
+    return false;
+  }
+  return true;
+};
+
 const toRegister = async () => {
   if (registerType.value === "email") {
     if (
@@ -99,6 +113,7 @@ const toRegister = async () => {
     ) {
       return ElMessage.error("请填写表单完整");
     }
+    if (!validateNewPassword(formData.value.password)) return;
     if (formData.value.password !== confirmPwd.value)
       return ElMessage.error("两次输入的密码不一致");
     try {
@@ -186,6 +201,7 @@ const toRegister = async () => {
     if (!passwordFormData.value.username || !passwordFormData.value.password) {
       return ElMessage.error("请填写表单完整");
     }
+    if (!validateNewPassword(passwordFormData.value.password)) return;
     if (passwordFormData.value.password !== confirmPwd.value)
       return ElMessage.error("两次输入的密码不一致");
     try {
@@ -354,6 +370,8 @@ onMounted(async () => {
           placeholder="密码"
           required
           autocomplete="new-password"
+          :minlength="USER_PASSWORD_MIN_LENGTH"
+          :maxlength="USER_PASSWORD_MAX_LENGTH"
         />
         <br />
         <input
@@ -362,8 +380,14 @@ onMounted(async () => {
           v-model="confirmPwd"
           placeholder="确认密码"
           required
+          autocomplete="new-password"
+          :minlength="USER_PASSWORD_MIN_LENGTH"
+          :maxlength="USER_PASSWORD_MAX_LENGTH"
         />
         <br />
+        <div class="text-sm text-zinc-500 dark:text-zinc-400">
+          {{ USER_PASSWORD_POLICY_MESSAGE }}
+        </div>
         <input
           class="l-input a-input"
           type="text"
@@ -417,6 +441,8 @@ onMounted(async () => {
           placeholder="密码"
           required
           autocomplete="new-password"
+          :minlength="USER_PASSWORD_MIN_LENGTH"
+          :maxlength="USER_PASSWORD_MAX_LENGTH"
         />
         <br />
         <input
@@ -425,7 +451,13 @@ onMounted(async () => {
           v-model="confirmPwd"
           placeholder="确认密码"
           required
+          autocomplete="new-password"
+          :minlength="USER_PASSWORD_MIN_LENGTH"
+          :maxlength="USER_PASSWORD_MAX_LENGTH"
         />
+        <div class="text-sm text-zinc-500 dark:text-zinc-400">
+          {{ USER_PASSWORD_POLICY_MESSAGE }}
+        </div>
       </template>
       <template v-else-if="registerType === 'oauth2'">
         <button
