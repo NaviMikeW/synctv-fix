@@ -28,12 +28,15 @@ import (
 func Me(ctx *gin.Context) {
 	user := middlewares.GetUserEntry(ctx).Value()
 
-	ctx.JSON(http.StatusOK, model.NewAPIDataResp(&model.UserInfoResp{
-		ID:        user.ID,
-		Username:  user.Username,
-		Role:      user.Role,
-		CreatedAt: user.CreatedAt.UnixMilli(),
-		Email:     user.Email.String(),
+	ctx.JSON(http.StatusOK, model.NewAPIDataResp(&model.UserMeResp{
+		UserInfoResp: model.UserInfoResp{
+			ID:        user.ID,
+			Username:  user.Username,
+			Role:      user.Role,
+			CreatedAt: user.CreatedAt.UnixMilli(),
+			Email:     user.Email.String(),
+		},
+		MustChangePassword: db.RootPasswordNeedsChange(&user.User),
 	}))
 }
 
