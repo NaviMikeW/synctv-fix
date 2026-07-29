@@ -30,7 +30,9 @@ RUN go-cross \
 
 FROM alpine:latest
 
-ENV PUID=0 PGID=0 UMASK=022
+# Keep legacy update-check plumbing off; the fork also rejects upstream
+# self-update in code so this cannot overwrite the custom build.
+ENV PUID=0 PGID=0 UMASK=022 DISABLE_UPDATE_CHECK=true
 
 COPY --from=builder /synctv/build/synctv /usr/local/bin/synctv
 
