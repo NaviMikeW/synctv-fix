@@ -4,8 +4,14 @@ import { ElNotification } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import { changePasswordApi } from "@/services/apis/user";
 import { userStore } from "@/stores/user";
+import {
+  USER_PASSWORD_MAX_LENGTH,
+  USER_PASSWORD_MIN_LENGTH,
+  USER_PASSWORD_POLICY_MESSAGE,
+  USER_PASSWORD_PRINTABLE_ASCII_PATTERN
+} from "@/utils/userPassword";
 
-const { token, updateToken } = userStore();
+const { token, updateToken, getUserInfo } = userStore();
 
 interface FormData {
   password: string;
@@ -37,7 +43,17 @@ const validatePass = (rule: any, value: any, callback: any) => {
 const rules = reactive<FormRules<FormData>>({
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 1, max: 32, message: "长度在 1 ~ 32 之间", trigger: "blur" }
+    {
+      min: USER_PASSWORD_MIN_LENGTH,
+      max: USER_PASSWORD_MAX_LENGTH,
+      message: USER_PASSWORD_POLICY_MESSAGE,
+      trigger: "blur"
+    },
+    {
+      pattern: USER_PASSWORD_PRINTABLE_ASCII_PATTERN,
+      message: USER_PASSWORD_POLICY_MESSAGE,
+      trigger: "blur"
+    }
   ],
   confirmPassword: [{ required: true, validator: validatePass, trigger: "blur" }]
 });
@@ -60,6 +76,7 @@ const changePwd = () => {
             type: "success"
           });
           updateToken(state.value?.token);
+          await getUserInfo();
           formDataRef?.value?.resetFields();
           open.value = false;
         }
@@ -93,10 +110,20 @@ const changePwd = () => {
         status-icon
       >
         <el-form-item label="新密码" prop="password">
-          <el-input v-model="formData.password" type="password" show-password />
+          <el-input
+            v-model="formData.password"
+            type="password"
+            autocomplete="new-password"
+            show-password
+          />
         </el-form-item>
         <el-form-item label="确认密码" prop="confirmPassword">
-          <el-input v-model="formData.confirmPassword" type="password" show-password />
+          <el-input
+            v-model="formData.confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            show-password
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="changePwd" :loading="isLoading"> 确定修改 </el-button>
