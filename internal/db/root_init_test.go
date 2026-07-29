@@ -330,6 +330,9 @@ func setupRootTestDB(t *testing.T) {
 	`).Error; err != nil {
 		t.Fatalf("create users table: %v", err)
 	}
+	if err = testDB.AutoMigrate(&model.ManagedCredential{}); err != nil {
+		t.Fatalf("create managed credentials table: %v", err)
+	}
 
 	db = testDB
 	dbType = conf.DatabaseTypeSqlite3

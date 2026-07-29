@@ -374,7 +374,7 @@ func setupManagedCredentialTestDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
-	if err = testDB.AutoMigrate(&model.User{}, &model.ManagedCredential{}); err != nil {
+	if err = testDB.AutoMigrate(models...); err != nil {
 		t.Fatalf("migrate test database: %v", err)
 	}
 
