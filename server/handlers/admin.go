@@ -112,7 +112,7 @@ func AdminSettings(ctx *gin.Context) {
 }
 
 func AdminGetUsers(ctx *gin.Context) {
-	// user := middlewares.GetUserEntry(ctx)
+	user := middlewares.GetUserEntry(ctx).Value()
 	log := middlewares.GetLogger(ctx)
 
 	page, pageSize, err := utils.GetPageAndMax(ctx)
@@ -201,9 +201,22 @@ func AdminGetUsers(ctx *gin.Context) {
 		return
 	}
 
+	resp := genUserListResp(list)
+	if user.IsRoot() {
+		states, stateErr := db.ManagedCredentialStates(list)
+		if stateErr != nil {
+			log.Errorf("get managed-password states error: %v", stateErr)
+			ctx.AbortWithStatusJSON(http.StatusInternalServerError, model.NewAPIErrorResp(stateErr))
+			return
+		}
+		for i, item := range list {
+			resp[i].ManagedCredentialState = string(states[item.ID])
+		}
+	}
+
 	ctx.JSON(http.StatusOK, model.NewAPIDataResp(gin.H{
 		"total": total,
-		"list":  genUserListResp(list),
+		"list":  resp,
 	}))
 }
 
@@ -429,11 +442,11 @@ func AdminBanUser(ctx *gin.Context) {
 		return
 	}
 
-	if u.Value().IsAdmin() && !user.IsRoot() {
-		log.Error("cannot ban admin")
+	if u.Value().IsAdmin() {
+		log.Error("demote admin before banning")
 		ctx.AbortWithStatusJSON(
 			http.StatusBadRequest,
-			model.NewAPIErrorStringResp("cannot ban admin"),
+			model.NewAPIErrorStringResp("demote admin before banning"),
 		)
 
 		return

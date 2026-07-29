@@ -1,4 +1,5 @@
 import { useDefineApi } from "@/stores/useDefineApi";
+import axios from "axios";
 import type { RoomList } from "@/types/Room";
 import type { ROLE } from "@/types/User";
 import type { Backend } from "@/types/Vendor";
@@ -45,6 +46,7 @@ export const delAdminApi = useDefineApi<
     };
     data: {
       id: string;
+      password: string;
     };
   },
   any
@@ -76,12 +78,99 @@ export const userListApi = useDefineApi<
       username: string;
       role: number;
       createdAt: number;
+      managedCredentialState?: ManagedCredentialState;
     }[];
     total: number;
   }
 >({
   url: "/api/admin/user/list"
 });
+
+export type ManagedCredentialState =
+  | "not_applicable"
+  | "missing"
+  | "ready"
+  | "key_changed"
+  | "unsupported_format"
+  | "key_not_configured";
+
+export const revealManagedUserPassword = async (
+  token: string,
+  id: string,
+  signal: AbortSignal
+) => {
+  const response = await axios.post<{
+    data: {
+      version: number;
+      algorithm: string;
+      envelope: string;
+      updatedAt: number;
+    };
+  }>(
+    "/api/admin/user/managed-password",
+    { id },
+    { headers: { Authorization: token }, signal }
+  );
+  return response.data.data;
+};
+
+export const decryptManagedUserPassword = async (
+  guardianKey: string,
+  userId: string,
+  version: number,
+  algorithm: string,
+  envelopeBase64: string
+) => {
+  if (version !== 1 || algorithm !== "AES-256-GCM") {
+    throw new Error("此托管密码格式暂不受当前网页支持");
+  }
+  if (!/^[0-9a-fA-F]{64}$/.test(guardianKey)) {
+    throw new Error("托管密钥必须是 64 位十六进制字符");
+  }
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("当前连接不支持安全的本地解密，请改用 HTTPS 访问");
+  }
+
+  const keyBytes = new Uint8Array(
+    guardianKey.match(/.{2}/g)!.map((value) => Number.parseInt(value, 16))
+  );
+  const envelope = Uint8Array.from(atob(envelopeBase64), (value) => value.charCodeAt(0));
+  const nonceLength = 12;
+  if (envelope.length <= nonceLength + 16) {
+    throw new Error("托管密码数据无效");
+  }
+
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+  const plaintext = await globalThis.crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: envelope.slice(0, nonceLength),
+      additionalData: new TextEncoder().encode(`synctv:managed-password:v1:${userId}`),
+      tagLength: 128
+    },
+    key,
+    envelope.slice(nonceLength)
+  );
+  return new TextDecoder().decode(plaintext);
+};
+
+export const resetManagedUserPassword = async (
+  token: string,
+  id: string,
+  password: string
+) => {
+  await axios.post(
+    "/api/admin/user/password",
+    { id, password },
+    { headers: { Authorization: token } }
+  );
+};
 
 // 封禁用户
 export const banUserApi = useDefineApi<

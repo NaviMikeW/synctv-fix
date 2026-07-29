@@ -3,6 +3,7 @@ package op
 import (
 	"errors"
 	"hash/crc32"
+	"sync"
 	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
@@ -19,6 +20,7 @@ import (
 )
 
 type User struct {
+	credentialMu  sync.RWMutex
 	alistCache    atomic.Pointer[cache.AlistUserCache]
 	bilibiliCache atomic.Pointer[cache.BilibiliUserCache]
 	embyCache     atomic.Pointer[cache.EmbyUserCache]
@@ -70,7 +72,32 @@ func (u *User) CheckVersion(version uint32) bool {
 	return atomic.LoadUint32(&u.version) == version
 }
 
+func (u *User) AuthenticatePassword(password string) (uint32, bool) {
+	u.credentialMu.RLock()
+	defer u.credentialMu.RUnlock()
+
+	if !u.User.CheckPassword(password) {
+		return 0, false
+	}
+	return atomic.LoadUint32(&u.version), true
+}
+
+func (u *User) RoleSnapshot() model.Role {
+	u.credentialMu.RLock()
+	defer u.credentialMu.RUnlock()
+	return u.Role
+}
+
+func (u *User) RootPasswordNeedsChange() bool {
+	u.credentialMu.RLock()
+	defer u.credentialMu.RUnlock()
+	return db.RootPasswordNeedsChange(&u.User)
+}
+
 func (u *User) SetPassword(password string) error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
 	if u.IsGuest() {
 		return errors.New("guest cannot set password")
 	}
@@ -91,12 +118,13 @@ func (u *User) SetPassword(password string) error {
 		return err
 	}
 
-	atomic.StoreUint32(&u.version, crc32.ChecksumIEEE(hashedPassword))
-	u.HashedPassword = hashedPassword
-
-	if err = db.SetUserHashedPassword(u.ID, hashedPassword); err != nil {
+	err = db.SetUserPassword(u.ID, hashedPassword, password)
+	if err != nil {
 		return err
 	}
+
+	u.HashedPassword = hashedPassword
+	atomic.StoreUint32(&u.version, crc32.ChecksumIEEE(hashedPassword))
 
 	if err = db.RemoveInitialRootPasswordFile(u.ID); err != nil {
 		log.Warnf("remove initial root password file after password change: %v", err)
@@ -217,19 +245,20 @@ func (u *User) AddRoomMovies(room *Room, movies []*model.MovieBase) ([]*model.Mo
 }
 
 func (u *User) IsRoot() bool {
-	return u.Role == model.RoleRoot
+	return u.RoleSnapshot() == model.RoleRoot
 }
 
 func (u *User) IsAdmin() bool {
-	return u.Role == model.RoleAdmin || u.IsRoot()
+	role := u.RoleSnapshot()
+	return role == model.RoleAdmin || role == model.RoleRoot
 }
 
 func (u *User) IsBanned() bool {
-	return u.Role == model.RoleBanned
+	return u.RoleSnapshot() == model.RoleBanned
 }
 
 func (u *User) IsPending() bool {
-	return u.Role == model.RolePending
+	return u.RoleSnapshot() == model.RolePending
 }
 
 func (u *User) IsGuest() bool {
@@ -293,6 +322,9 @@ func (u *User) SetRoomPassword(room *Room, password string) error {
 }
 
 func (u *User) SetUserRole() error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
 	if u.IsGuest() {
 		return errors.New("cannot set guest role")
 	}
@@ -306,7 +338,37 @@ func (u *User) SetUserRole() error {
 	return nil
 }
 
+func (u *User) DemoteToManagedUser(password string) error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
+	if u.IsGuest() {
+		return errors.New("cannot demote guest")
+	}
+	if err := passwordpolicy.Validate(password); err != nil {
+		return err
+	}
+	hashedPassword, err := bcrypt.GenerateFromPassword(
+		stream.StringToBytes(password),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		return err
+	}
+	if err = db.DemotePrivilegedUser(u.ID, hashedPassword, password); err != nil {
+		return err
+	}
+
+	u.Role = model.RoleUser
+	u.HashedPassword = hashedPassword
+	atomic.StoreUint32(&u.version, crc32.ChecksumIEEE(hashedPassword))
+	return nil
+}
+
 func (u *User) SetAdminRole() error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
 	if u.IsGuest() {
 		return errors.New("guest cannot be admin")
 	}
@@ -321,6 +383,9 @@ func (u *User) SetAdminRole() error {
 }
 
 func (u *User) SetRootRole() error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
 	if u.IsGuest() {
 		return errors.New("guest cannot be root")
 	}
@@ -335,8 +400,14 @@ func (u *User) SetRootRole() error {
 }
 
 func (u *User) Ban() error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
 	if u.IsGuest() {
 		return errors.New("guest cannot be banned")
+	}
+	if u.Role >= model.RoleAdmin {
+		return errors.New("demote privileged account before banning it")
 	}
 
 	if err := db.BanUserByID(u.ID); err != nil {
@@ -349,6 +420,12 @@ func (u *User) Ban() error {
 }
 
 func (u *User) Unban() error {
+	u.credentialMu.Lock()
+	defer u.credentialMu.Unlock()
+
+	if u.Role != model.RoleBanned {
+		return errors.New("user is not banned")
+	}
 	if err := db.UnbanUserByID(u.ID); err != nil {
 		return err
 	}

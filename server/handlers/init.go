@@ -135,6 +135,8 @@ func initAdmin(admin, root *gin.RouterGroup) {
 		root.POST("/admin/add", RootAddAdmin)
 
 		root.POST("/admin/delete", RootDeleteAdmin)
+
+		root.POST("/user/managed-password", RootGetManagedUserPassword)
 	}
 }
 

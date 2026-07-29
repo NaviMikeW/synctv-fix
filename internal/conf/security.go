@@ -2,12 +2,15 @@ package conf
 
 // SecurityConfig contains authentication-specific safeguards.
 //
-// InitialRootPassword is deliberately environment-only. With the default
-// SYNCTV_ prefix it is read from SYNCTV_INITIAL_ROOT_PASSWORD and is never
-// persisted to config.yaml.
+// InitialRootPassword and GuardianCredentialKey are deliberately
+// environment-only. With the default SYNCTV_ prefix they are never persisted
+// to config.yaml.
 type SecurityConfig struct {
-	InitialRootPassword string               `env:"INITIAL_ROOT_PASSWORD" yaml:"-"`
-	LoginRateLimit      LoginRateLimitConfig `yaml:"login_rate_limit"`
+	InitialRootPassword         string               `env:"INITIAL_ROOT_PASSWORD"               yaml:"-"`
+	GuardianCredentialKey       string               `env:"GUARDIAN_CREDENTIAL_KEY"              yaml:"-"`
+	GuardianRequireHTTPS        bool                 `env:"GUARDIAN_REQUIRE_HTTPS"                lc:"default: true" yaml:"-"`
+	GuardianTrustForwardedProto bool                 `env:"GUARDIAN_TRUST_FORWARDED_PROTO"                         yaml:"-"`
+	LoginRateLimit              LoginRateLimitConfig `yaml:"login_rate_limit"`
 }
 
 type LoginRateLimitConfig struct {
@@ -20,6 +23,7 @@ type LoginRateLimitConfig struct {
 
 func DefaultSecurityConfig() SecurityConfig {
 	return SecurityConfig{
+		GuardianRequireHTTPS: true,
 		LoginRateLimit: LoginRateLimitConfig{
 			Enable:                true,
 			Period:                "1m",

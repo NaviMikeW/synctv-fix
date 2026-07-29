@@ -8,3 +8,5 @@ data:
   DATABASE_PORT: "5432"
   DATABASE_USER: postgres
   DATABASE_NAME: postgres
+  SYNCTV_GUARDIAN_REQUIRE_HTTPS: "true"
+  SYNCTV_GUARDIAN_TRUST_FORWARDED_PROTO: {{ .Values.synctv.security.trustForwardedProto | quote }}

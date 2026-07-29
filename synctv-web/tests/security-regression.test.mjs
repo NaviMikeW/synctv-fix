@@ -112,3 +112,35 @@ test("所有动态播放器菜单名称都先转换为安全 HTML", async () => 
   assert.match(controlSource, /html:\s*textToSafeHtml\(option\.name\)/);
   assert.match(subtitleSource, /html:\s*textToSafeHtml\(key\)/);
 });
+
+test("托管密码只对 root 开放且密钥不写入浏览器存储", async () => {
+  const [managerSource, dialogSource, apiSource] = await Promise.all([
+    readSource("src/views/admin/settings/UserManager.vue"),
+    readSource("src/components/admin/dialogs/managedPassword.vue"),
+    readSource("src/services/apis/admin.ts")
+  ]);
+
+  assert.match(managerSource, /info\.value\?\.role\s*===\s*ROLE\.Root/);
+  assert.match(managerSource, /v-if=[\s\S]*?isRoot[\s\S]*?managedCredentialState/);
+  assert.match(apiSource, /["']\/api\/admin\/user\/managed-password["']/);
+  assert.match(apiSource, /globalThis\.crypto\.subtle\.decrypt/);
+  assert.match(apiSource, /synctv:managed-password:v1:\$\{userId\}/);
+  assert.match(apiSource, /version !== 1 \|\| algorithm !== "AES-256-GCM"/);
+  assert.doesNotMatch(apiSource, /\{\s*id,\s*guardianKey\s*\}/);
+  assert.match(dialogSource, /guardianKey\.value\s*=\s*["']/);
+  assert.match(dialogSource, /v-if="canDecryptLocally"/);
+  assert.match(dialogSource, /autocomplete="off"/);
+  assert.match(dialogSource, /if\s*\(resetLoading\.value\)\s*return/);
+  assert.doesNotMatch(dialogSource, /CopyButton/);
+  assert.doesNotMatch(dialogSource, /localStorage|sessionStorage|useStorage/);
+  assert.match(dialogSource, /@closed="clearSecrets"/);
+  assert.match(dialogSource, /new AbortController\(\)/);
+  assert.match(dialogSource, /activeRequest\?\.abort\(\)/);
+  assert.match(dialogSource, /generation !== requestGeneration/);
+  assert.match(dialogSource, /:before-close="beforeClose"/);
+  assert.match(dialogSource, /正在重设密码，请等待操作完成/);
+  assert.match(dialogSource, /resetManagedUserPassword\(token\.value, selectedUser\.id, passwordToSet\)/);
+  assert.match(dialogSource, /重设并同步托管/);
+  assert.match(managerSource, /ElMessageBox\.prompt/);
+  assert.match(managerSource, /降级并设置密码/);
+});

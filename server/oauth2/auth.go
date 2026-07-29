@@ -229,7 +229,7 @@ func newAuthFunc(redirect string) stateHandler {
 				ctx.AbortWithStatusJSON(http.StatusOK, model.NewAPIDataResp(gin.H{
 					"type":    CallbackTypeAuth,
 					"message": err.Error(),
-					"role":    user.Role,
+					"role":    user.RoleSnapshot(),
 				}))
 
 				return
@@ -250,7 +250,7 @@ func newAuthFunc(redirect string) stateHandler {
 		case http.MethodPost:
 			ctx.JSON(http.StatusOK, model.NewAPIDataResp(gin.H{
 				"type":     CallbackTypeAuth,
-				"role":     user.Role,
+				"role":     user.RoleSnapshot(),
 				"token":    token,
 				"redirect": redirect,
 			}))
