@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	json "github.com/json-iterator/go"
 	dbModel "github.com/synctv-org/synctv/internal/model"
+	"github.com/synctv-org/synctv/internal/password"
 	"github.com/synctv-org/synctv/internal/provider"
 )
 
@@ -25,16 +26,7 @@ func (s *SetUserPasswordReq) Decode(ctx *gin.Context) error {
 }
 
 func (s *SetUserPasswordReq) Validate() error {
-	switch {
-	case s.Password == "":
-		return FormatEmptyPasswordError("user")
-	case len(s.Password) > 32:
-		return ErrPasswordTooLong
-	case !alnumPrintReg.MatchString(s.Password):
-		return ErrPasswordHasInvalidChar
-	}
-
-	return nil
+	return validateNewUserPassword(s.Password)
 }
 
 type LoginUserReq struct {
@@ -106,16 +98,7 @@ func (u *UserSignupPasswordReq) Validate() error {
 		return ErrUsernameHasInvalidChar
 	}
 
-	switch {
-	case u.Password == "":
-		return FormatEmptyPasswordError("user")
-	case len(u.Password) > 32:
-		return ErrPasswordTooLong
-	case !alnumPrintReg.MatchString(u.Password):
-		return ErrPasswordHasInvalidChar
-	}
-
-	return nil
+	return validateNewUserPassword(u.Password)
 }
 
 type UserInfoResp struct {
@@ -124,6 +107,11 @@ type UserInfoResp struct {
 	Email     string       `json:"email"`
 	CreatedAt int64        `json:"createdAt"`
 	Role      dbModel.Role `json:"role"`
+}
+
+type UserMeResp struct {
+	UserInfoResp
+	MustChangePassword bool `json:"mustChangePassword"`
 }
 
 type SetUsernameReq struct {
@@ -250,16 +238,7 @@ func (u *UserSignupEmailReq) Validate() error {
 		return err
 	}
 
-	switch {
-	case u.Password == "":
-		return FormatEmptyPasswordError("user")
-	case len(u.Password) > 32:
-		return ErrPasswordTooLong
-	case !alnumPrintReg.MatchString(u.Password):
-		return ErrPasswordHasInvalidChar
-	}
-
-	return nil
+	return validateNewUserPassword(u.Password)
 }
 
 type SendUserRetrievePasswordEmailCaptchaReq = UserSendBindEmailCaptchaReq
@@ -278,5 +257,15 @@ func (u *UserRetrievePasswordEmailReq) Validate() error {
 	if u.Captcha == "" {
 		return errors.New("captcha is empty")
 	}
-	return nil
+
+	return validateNewUserPassword(u.Password)
+}
+
+func validateNewUserPassword(value string) error {
+	err := password.Validate(value)
+	if errors.Is(err, password.ErrEmpty) {
+		return FormatEmptyPasswordError("user")
+	}
+
+	return err
 }
