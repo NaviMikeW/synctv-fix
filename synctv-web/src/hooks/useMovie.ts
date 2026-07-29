@@ -17,7 +17,9 @@ import { strLengthLimit } from "@/utils";
 // 获取房间信息
 const room = roomStore();
 
-export const useMovieApi = (token: string, roomId: string) => {
+export const useMovieApi = (token: string, roomId: string, roomSessionID = room.roomSessionID) => {
+  const isActiveRoomSession = () => room.isRoomSessionActive(roomId, roomSessionID);
+
   // 获取影片列表和正在播放的影片
   const currentPage = ref(1);
   const pageSize = ref(10);
@@ -45,7 +47,7 @@ export const useMovieApi = (token: string, roomId: string) => {
         }
       });
 
-      if (movies.value) {
+      if (movies.value && isActiveRoomSession()) {
         room.movies = movies.value.movies;
         room.totalMovies = movies.value.total;
         room.folder = movies.value.paths;
@@ -62,8 +64,11 @@ export const useMovieApi = (token: string, roomId: string) => {
   };
 
   // 获取正在播放的影片
-  const { state: currentMovie, execute: reqCurrentMovieApi, isLoading: isLoadingCurrent } =
-    currentMovieApi();
+  const {
+    state: currentMovie,
+    execute: reqCurrentMovieApi,
+    isLoading: isLoadingCurrent
+  } = currentMovieApi();
   const getCurrentMovie = async () => {
     try {
       await reqCurrentMovieApi({
@@ -73,7 +78,7 @@ export const useMovieApi = (token: string, roomId: string) => {
         }
       });
 
-      if (!currentMovie.value) return;
+      if (!currentMovie.value || !isActiveRoomSession()) return;
 
       room.currentStatus = currentMovie.value.status;
       room.currentExpireId = currentMovie.value.expireId;
@@ -250,6 +255,8 @@ export const useMovieApi = (token: string, roomId: string) => {
           "X-Room-Id": roomId
         }
       });
+      if (!isActiveRoomSession()) return;
+
       for (const id of ids) {
         room.movies.splice(
           room.movies.findIndex((movie: MovieInfo) => movie["id"] === id),
