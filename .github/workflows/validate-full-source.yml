@@ -91,7 +91,7 @@ jobs:
           npm ci
           npm run test:security
           npm run build
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build SyncTV image
         uses: docker/build-push-action@v6
         with:
