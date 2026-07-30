@@ -51,6 +51,28 @@ type AdminUserPasswordReq struct {
 	Password string `json:"password"`
 }
 
+type ManagedUserPasswordReq struct {
+	ID string `json:"id"`
+}
+
+func (req *ManagedUserPasswordReq) Validate() error {
+	if len(req.ID) != 32 {
+		return ErrInvalidID
+	}
+	return nil
+}
+
+func (req *ManagedUserPasswordReq) Decode(ctx *gin.Context) error {
+	return json.NewDecoder(ctx.Request.Body).Decode(req)
+}
+
+type ManagedUserPasswordResp struct {
+	Version   uint16 `json:"version"`
+	Algorithm string `json:"algorithm"`
+	Envelope  string `json:"envelope"`
+	UpdatedAt int64  `json:"updatedAt"`
+}
+
 func (aur *AdminUserPasswordReq) Validate() error {
 	if aur.ID == "" {
 		return ErrInvalidID

@@ -50,7 +50,8 @@ func WithDisableAutoAddUsernameSuffix() CreateUserConfig {
 	}
 }
 
-func CreateUserWithHashedPassword(
+func createUserWithHashedPassword(
+	tx *gorm.DB,
 	username string,
 	hashedPassword []byte,
 	conf ...CreateUserConfig,
@@ -80,7 +81,7 @@ func CreateUserWithHashedPassword(
 		return nil, errors.New("role cannot be empty")
 	}
 
-	err := db.Create(u).Error
+	err := tx.Create(u).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return u, errors.New("user already exists")
@@ -101,7 +102,32 @@ func CreateUser(username, password string, conf ...CreateUserConfig) (*model.Use
 		return nil, err
 	}
 
-	return CreateUserWithHashedPassword(username, hashedPassword, conf...)
+	var created *model.User
+	err = db.Transaction(func(tx *gorm.DB) error {
+		var createErr error
+		created, createErr = createUserWithHashedPassword(
+			tx,
+			username,
+			hashedPassword,
+			conf...,
+		)
+		if createErr != nil {
+			return createErr
+		}
+		if !IsManagedUser(created) {
+			return nil
+		}
+
+		credential, createErr := newManagedCredential(created.ID, password)
+		if createErr != nil {
+			return createErr
+		}
+		return saveManagedCredential(tx, credential)
+	})
+	if err != nil {
+		return created, err
+	}
+	return created, nil
 }
 
 func hashUserPassword(value string) ([]byte, error) {
@@ -369,15 +395,34 @@ func BanUser(u *model.User) error {
 	if u.Role == model.RoleBanned {
 		return nil
 	}
+	if u.Role >= model.RoleAdmin {
+		return errors.New("demote privileged account before banning it")
+	}
 
+	if err := BanUserByID(u.ID); err != nil {
+		return err
+	}
 	u.Role = model.RoleBanned
-
-	return SaveUser(u)
+	return nil
 }
 
 func BanUserByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleBanned)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return db.Transaction(func(tx *gorm.DB) error {
+		var user model.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("id", "role").
+			Where("id = ?", userID).
+			First(&user).Error; err != nil {
+			return HandleNotFound(err, ErrUserNotFound)
+		}
+		if user.Role >= model.RoleAdmin {
+			return errors.New("demote privileged account before banning it")
+		}
+		result := tx.Model(&model.User{}).
+			Where("id = ?", userID).
+			Update("role", model.RoleBanned)
+		return HandleUpdateResult(result, ErrUserNotFound)
+	})
 }
 
 func UnbanUser(u *model.User) error {
@@ -385,36 +430,51 @@ func UnbanUser(u *model.User) error {
 		return errors.New("user is not banned")
 	}
 
+	if err := UnbanUserByID(u.ID); err != nil {
+		return err
+	}
 	u.Role = model.RoleUser
-
-	return SaveUser(u)
+	return nil
 }
 
 func UnbanUserByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleUser)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	result := db.Model(&model.User{}).
+		Where("id = ? AND role = ?", userID, model.RoleBanned).
+		Update("role", model.RoleUser)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("user is not banned")
+	}
+	return nil
 }
 
 func DeleteUserByID(userID string) error {
-	result := db.Unscoped().Select(clause.Associations).Delete(&model.User{ID: userID})
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := deleteManagedCredential(tx, userID); err != nil {
+			return err
+		}
+		result := tx.Unscoped().Select(clause.Associations).Delete(&model.User{ID: userID})
+		return HandleUpdateResult(result, ErrUserNotFound)
+	})
 }
 
 func LoadAndDeleteUserByID(userID string, columns ...clause.Column) (*model.User, error) {
 	var user model.User
 
-	result := db.Unscoped().
-		Clauses(clause.Returning{Columns: columns}).
-		Select(clause.Associations).
-		Where("id = ?", userID).
-		Delete(&user)
-
-	return &user, HandleUpdateResult(result, ErrUserNotFound)
-}
-
-func SaveUser(u *model.User) error {
-	result := db.Omit("created_at").Save(u)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := deleteManagedCredential(tx, userID); err != nil {
+			return err
+		}
+		result := tx.Unscoped().
+			Clauses(clause.Returning{Columns: columns}).
+			Select(clause.Associations).
+			Where("id = ?", userID).
+			Delete(&user)
+		return HandleUpdateResult(result, ErrUserNotFound)
+	})
+	return &user, err
 }
 
 func AddAdmin(u *model.User) error {
@@ -422,19 +482,28 @@ func AddAdmin(u *model.User) error {
 		return nil
 	}
 
+	if err := SetAdminRoleByID(u.ID); err != nil {
+		return err
+	}
 	u.Role = model.RoleAdmin
-
-	return SaveUser(u)
+	return nil
 }
 
-func RemoveAdmin(u *model.User) error {
+func RemoveAdmin(u *model.User, password string) error {
 	if u.Role < model.RoleAdmin {
 		return nil
 	}
 
+	hashedPassword, err := hashUserPassword(password)
+	if err != nil {
+		return err
+	}
+	if err = DemotePrivilegedUser(u.ID, hashedPassword, password); err != nil {
+		return err
+	}
 	u.Role = model.RoleUser
-
-	return SaveUser(u)
+	u.HashedPassword = hashedPassword
+	return nil
 }
 
 func GetAdmins() ([]*model.User, error) {
@@ -449,13 +518,7 @@ func GetAdmins() ([]*model.User, error) {
 }
 
 func AddAdminByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleAdmin)
-	return HandleUpdateResult(result, ErrUserNotFound)
-}
-
-func RemoveAdminByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleUser)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return setPrivilegedRoleByID(userID, model.RoleAdmin)
 }
 
 func AddRoot(u *model.User) error {
@@ -463,29 +526,32 @@ func AddRoot(u *model.User) error {
 		return nil
 	}
 
+	if err := SetRootRoleByID(u.ID); err != nil {
+		return err
+	}
 	u.Role = model.RoleRoot
-
-	return SaveUser(u)
+	return nil
 }
 
-func RemoveRoot(u *model.User) error {
+func RemoveRoot(u *model.User, password string) error {
 	if u.Role != model.RoleRoot {
 		return nil
 	}
 
+	hashedPassword, err := hashUserPassword(password)
+	if err != nil {
+		return err
+	}
+	if err = DemotePrivilegedUser(u.ID, hashedPassword, password); err != nil {
+		return err
+	}
 	u.Role = model.RoleUser
-
-	return SaveUser(u)
+	u.HashedPassword = hashedPassword
+	return nil
 }
 
 func AddRootByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleRoot)
-	return HandleUpdateResult(result, ErrUserNotFound)
-}
-
-func RemoveRootByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleUser)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return setPrivilegedRoleByID(userID, model.RoleRoot)
 }
 
 func GetRoots() []*model.User {
@@ -495,18 +561,24 @@ func GetRoots() []*model.User {
 }
 
 func SetAdminRoleByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleAdmin)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return setPrivilegedRoleByID(userID, model.RoleAdmin)
 }
 
 func SetRootRoleByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleRoot)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return setPrivilegedRoleByID(userID, model.RoleRoot)
 }
 
 func SetUserRoleByID(userID string) error {
-	result := db.Model(&model.User{}).Where("id = ?", userID).Update("role", model.RoleUser)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	result := db.Model(&model.User{}).
+		Where("id = ? AND role = ?", userID, model.RolePending).
+		Update("role", model.RoleUser)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("only a pending user can be approved without setting a new password")
+	}
+	return nil
 }
 
 func SetUsernameByID(userID, username string) error {
@@ -537,6 +609,11 @@ func GetUsers(scopes ...func(*gorm.DB) *gorm.DB) ([]*model.User, error) {
 }
 
 func SetUserHashedPassword(id string, hashedPassword []byte) error {
-	result := db.Model(&model.User{}).Where("id = ?", id).Update("hashed_password", hashedPassword)
-	return HandleUpdateResult(result, ErrUserNotFound)
+	return db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.User{}).Where("id = ?", id).Update("hashed_password", hashedPassword)
+		if err := HandleUpdateResult(result, ErrUserNotFound); err != nil {
+			return err
+		}
+		return deleteManagedCredential(tx, id)
+	})
 }

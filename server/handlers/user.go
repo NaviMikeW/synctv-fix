@@ -32,11 +32,11 @@ func Me(ctx *gin.Context) {
 		UserInfoResp: model.UserInfoResp{
 			ID:        user.ID,
 			Username:  user.Username,
-			Role:      user.Role,
+			Role:      user.RoleSnapshot(),
 			CreatedAt: user.CreatedAt.UnixMilli(),
 			Email:     user.Email.String(),
 		},
-		MustChangePassword: db.RootPasswordNeedsChange(&user.User),
+		MustChangePassword: user.RootPasswordNeedsChange(),
 	}))
 }
 
@@ -87,7 +87,8 @@ func LoginUser(ctx *gin.Context) {
 		return
 	}
 
-	if ok := user.Value().CheckPassword(req.Password); !ok {
+	authVersion, ok := user.Value().AuthenticatePassword(req.Password)
+	if !ok {
 		log.Errorf("password incorrect")
 		ctx.AbortWithStatusJSON(
 			http.StatusForbidden,
@@ -97,19 +98,23 @@ func LoginUser(ctx *gin.Context) {
 		return
 	}
 
-	handleUserToken(ctx, user.Value())
+	handleUserTokenWithVersion(ctx, user.Value(), authVersion)
 }
 
 func handleUserToken(ctx *gin.Context, user *op.User) {
+	handleUserTokenWithVersion(ctx, user, user.Version())
+}
+
+func handleUserTokenWithVersion(ctx *gin.Context, user *op.User, userVersion uint32) {
 	log := middlewares.GetLogger(ctx)
 
-	token, err := middlewares.NewAuthUserToken(user)
+	token, err := middlewares.NewAuthUserTokenWithVersion(user, userVersion)
 	if err != nil {
 		if errors.Is(err, middlewares.ErrUserBanned) ||
 			errors.Is(err, middlewares.ErrUserPending) {
 			ctx.AbortWithStatusJSON(http.StatusOK, model.NewAPIDataResp(gin.H{
 				"message": err.Error(),
-				"role":    user.Role,
+				"role":    user.RoleSnapshot(),
 			}))
 
 			return
@@ -123,7 +128,7 @@ func handleUserToken(ctx *gin.Context, user *op.User) {
 
 	ctx.JSON(http.StatusOK, model.NewAPIDataResp(gin.H{
 		"token": token,
-		"role":  user.Role,
+		"role":  user.RoleSnapshot(),
 	}))
 }
 

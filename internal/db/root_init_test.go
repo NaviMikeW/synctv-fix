@@ -288,7 +288,8 @@ func TestResetRootPasswordRejectsNonRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hash user password: %v", err)
 	}
-	user, err := CreateUserWithHashedPassword(
+	user, err := createUserWithHashedPassword(
+		db,
 		"regular-user",
 		hashedPassword,
 		WithRole(model.RoleUser),
@@ -329,6 +330,9 @@ func setupRootTestDB(t *testing.T) {
 	`).Error; err != nil {
 		t.Fatalf("create users table: %v", err)
 	}
+	if err = testDB.AutoMigrate(&model.ManagedCredential{}); err != nil {
+		t.Fatalf("create managed credentials table: %v", err)
+	}
 
 	db = testDB
 	dbType = conf.DatabaseTypeSqlite3
@@ -360,7 +364,8 @@ func createTestRootNamed(t *testing.T, username, value string) *model.User {
 	if err != nil {
 		t.Fatalf("hash root password: %v", err)
 	}
-	root, err := CreateUserWithHashedPassword(
+	root, err := createUserWithHashedPassword(
+		db,
 		username,
 		hashedPassword,
 		WithRole(model.RoleRoot),

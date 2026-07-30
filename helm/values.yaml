@@ -10,6 +10,14 @@ synctv:
   storage:
     size: 1Gi
     storageClass: ""
+  security:
+    # Required. Generate once with `openssl rand -hex 32`, then preserve it
+    # alongside protected backups. Changing it makes old managed passwords
+    # unreadable until those users change or reset their password.
+    guardianCredentialKey: ""
+    # Managed passwords are only available through HTTPS. Set this to true
+    # only when a trusted ingress overwrites X-Forwarded-Proto.
+    trustForwardedProto: true
 
 postgresql:
   enabled: true

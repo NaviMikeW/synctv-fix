@@ -14,3 +14,10 @@ services:
       - PGID=0
       - UMASK=022
       - TZ=Asia/Shanghai
+      # Generate once with: openssl rand -hex 32
+      # Keep the same value across container upgrades and database restores.
+      - SYNCTV_GUARDIAN_CREDENTIAL_KEY=${SYNCTV_GUARDIAN_CREDENTIAL_KEY:?Generate it once with openssl rand -hex 32 and keep it safe}
+      # Keep true. If HTTPS ends at a trusted reverse proxy such as Lucky,
+      # set TRUST_FORWARDED_PROTO=true and do not expose port 8080 publicly.
+      - SYNCTV_GUARDIAN_REQUIRE_HTTPS=true
+      - SYNCTV_GUARDIAN_TRUST_FORWARDED_PROTO=${SYNCTV_GUARDIAN_TRUST_FORWARDED_PROTO:-false}

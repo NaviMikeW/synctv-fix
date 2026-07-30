@@ -243,6 +243,10 @@ func validateAuthUser(user *op.User, userVersion uint32) error {
 }
 
 func NewAuthUserToken(user *op.User) (string, error) {
+	return NewAuthUserTokenWithVersion(user, user.Version())
+}
+
+func NewAuthUserTokenWithVersion(user *op.User, userVersion uint32) (string, error) {
 	if err := validateNewAuthUserToken(user); err != nil {
 		return "", err
 	}
@@ -254,7 +258,7 @@ func NewAuthUserToken(user *op.User) (string, error) {
 
 	claims := &AuthClaims{
 		UserID:      user.ID,
-		UserVersion: user.Version(),
+		UserVersion: userVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(t)),
@@ -524,7 +528,7 @@ func setLogFields(ctx *gin.Context, user *op.User, room *op.Room) {
 	if user != nil {
 		log.Data["uid"] = user.ID
 		log.Data["unm"] = user.Username
-		log.Data["uro"] = user.Role.String()
+		log.Data["uro"] = user.RoleSnapshot().String()
 	}
 
 	if room != nil {

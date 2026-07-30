@@ -2,7 +2,7 @@ name: validate-full-source
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, agent/security-baseline]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,7 @@ jobs:
           ./internal/conf
           ./internal/db
           ./internal/embyplayback
+          ./internal/guardian
           ./internal/op
           ./internal/password
           ./server/handlers
@@ -51,35 +52,50 @@ jobs:
           grep -Fq 'pullPolicy: IfNotPresent' helm/values.yaml
           grep -Fq 'synctv.image.tag is required' helm/templates/statefulset-synctv.yaml
           grep -Fq 'postgresql.password is required' helm/templates/secret.yaml
+          grep -Fq 'synctv.security.guardianCredentialKey is required' helm/templates/secret.yaml
 
           set +e
           image_tag_error="$(
             helm template synctv ./helm \
-              --set-string postgresql.password='Validation-DB-2026!' 2>&1
+              --set-string postgresql.password='Validation-DB-2026!' \
+              --set-string synctv.security.guardianCredentialKey='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' 2>&1
           )"
           image_tag_status=$?
           database_password_error="$(
             helm template synctv ./helm \
-              --set-string synctv.image.tag=sha-validation 2>&1
+              --set-string synctv.image.tag=sha-validation \
+              --set-string synctv.security.guardianCredentialKey='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' 2>&1
           )"
           database_password_status=$?
+          guardian_key_error="$(
+            helm template synctv ./helm \
+              --set-string synctv.image.tag=sha-validation \
+              --set-string postgresql.password='Validation-DB-2026!' 2>&1
+          )"
+          guardian_key_status=$?
           set -e
           test "$image_tag_status" -ne 0
           test "$database_password_status" -ne 0
+          test "$guardian_key_status" -ne 0
           grep -Fq 'synctv.image.tag is required' <<<"$image_tag_error"
           grep -Fq 'postgresql.password is required' <<<"$database_password_error"
+          grep -Fq 'synctv.security.guardianCredentialKey is required' <<<"$guardian_key_error"
 
           helm lint ./helm \
             --set-string synctv.image.tag=sha-validation \
-            --set-string postgresql.password='Validation-DB-2026!'
+            --set-string postgresql.password='Validation-DB-2026!' \
+            --set-string synctv.security.guardianCredentialKey='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
           rendered="$(
             helm template synctv ./helm \
               --set-string synctv.image.tag=sha-validation \
-              --set-string postgresql.password='Validation-DB-2026!'
+              --set-string postgresql.password='Validation-DB-2026!' \
+              --set-string synctv.security.guardianCredentialKey='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
           )"
           grep -Fq 'image: ghcr.io/navimikew/synctv-fix:sha-validation' <<<"$rendered"
           grep -Fq 'kind: Secret' <<<"$rendered"
           grep -Fq 'secretRef:' <<<"$rendered"
+          grep -Fq 'SYNCTV_GUARDIAN_CREDENTIAL_KEY:' <<<"$rendered"
+          grep -Fq 'SYNCTV_GUARDIAN_TRUST_FORWARDED_PROTO: "true"' <<<"$rendered"
       - uses: actions/setup-node@v4
         with:
           node-version: 18

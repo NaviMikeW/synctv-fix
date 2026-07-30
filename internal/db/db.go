@@ -43,6 +43,13 @@ func Init(d *gorm.DB, t conf.DatabaseType) error {
 		return err
 	}
 
+	if _, keyErr := activeGuardianKey(); keyErr != nil {
+		log.Warnf(
+			"managed child passwords are unavailable: %v; set SYNCTV_GUARDIAN_CREDENTIAL_KEY to a stable value generated with 'openssl rand -hex 32'; existing users can still sign in",
+			keyErr,
+		)
+	}
+
 	err = initGuestUser()
 	if err != nil {
 		return err

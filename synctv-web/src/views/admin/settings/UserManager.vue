@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref } from "vue";
-import { ElNotification, ElMessage } from "element-plus";
+import { ElNotification, ElMessage, ElMessageBox } from "element-plus";
 import { Search } from "@element-plus/icons-vue";
 import { userStore } from "@/stores/user";
 import {
@@ -10,12 +10,18 @@ import {
   addAdminApi,
   delAdminApi,
   approveUserApi,
-  delUserApi
+  delUserApi,
+  type ManagedCredentialState
 } from "@/services/apis/admin";
 import CopyButton from "@/components/CopyButton.vue";
 import userRooms from "@/components/admin/dialogs/userRooms.vue";
 import newUser from "@/components/admin/dialogs/newUser.vue";
+import managedPassword from "@/components/admin/dialogs/managedPassword.vue";
 import { ROLE, role } from "@/types/User";
+import {
+  isValidNewUserPassword,
+  USER_PASSWORD_POLICY_MESSAGE
+} from "@/utils/userPassword";
 
 const props = defineProps<{
   title: string;
@@ -23,13 +29,15 @@ const props = defineProps<{
 
 const userRoomsDialog = ref<InstanceType<typeof userRooms>>();
 const newUserDialog = ref<InstanceType<typeof newUser>>();
+const managedPasswordDialog = ref<InstanceType<typeof managedPassword>>();
 const getRole = (rawRole: ROLE) => role[rawRole];
 const roles = computed(() => {
   const v = Object.values(role);
   return v.filter((r) => r !== role[ROLE.Visitor] && r !== role[ROLE.Unknown]);
 });
 
-const { token } = userStore();
+const { token, info } = userStore();
+const isRoot = computed(() => info.value?.role === ROLE.Root);
 const totalItems = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(10);
@@ -99,21 +107,36 @@ const banUser = async (id: string, is: boolean) => {
 // 设管理
 const setAdmin = async (id: string, is: boolean) => {
   try {
-    const config = {
-      headers: {
-        Authorization: token.value
-      },
-      data: {
-        id: id
-      }
-    };
-    is ? await addAdminApi().execute(config) : await delAdminApi().execute(config);
+    if (is) {
+      await addAdminApi().execute({
+        headers: { Authorization: token.value },
+        data: { id }
+      });
+    } else {
+      const { value: password } = await ElMessageBox.prompt(
+        "降级后账号会成为普通托管用户，请设置一个新的登录密码。",
+        "取消管理员身份",
+        {
+          inputType: "password",
+          inputPlaceholder: USER_PASSWORD_POLICY_MESSAGE,
+          inputValidator: (value) =>
+            isValidNewUserPassword(value) || USER_PASSWORD_POLICY_MESSAGE,
+          confirmButtonText: "降级并设置密码",
+          cancelButtonText: "取消"
+        }
+      );
+      await delAdminApi().execute({
+        headers: { Authorization: token.value },
+        data: { id, password }
+      });
+    }
     ElNotification({
       title: "设置成功",
       type: "success"
     });
     await getUserListApi();
   } catch (err: any) {
+    if (err === "cancel" || err === "close") return;
     console.error(err);
     ElNotification({
       title: "错误",
@@ -126,6 +149,14 @@ const setAdmin = async (id: string, is: boolean) => {
 // 查看用户房间
 const getUserRoom = async (id: string) => {
   userRoomsDialog.value?.openDialog(id);
+};
+
+const openManagedPassword = (selectedUser: {
+  id: string;
+  username: string;
+  managedCredentialState?: ManagedCredentialState;
+}) => {
+  managedPasswordDialog.value?.openDialog(selectedUser);
 };
 
 // 允许用户注册
@@ -260,6 +291,19 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column fixed="right" label="操作" min-width="250" max-width="350">
           <template #default="scope">
+            <el-button
+              v-if="
+                isRoot &&
+                scope.row.managedCredentialState &&
+                scope.row.managedCredentialState !== 'not_applicable'
+              "
+              type="success"
+              plain
+              @click="openManagedPassword(scope.row)"
+            >
+              托管密码
+            </el-button>
+
             <div v-if="scope.row.role === ROLE.Pending">
               <el-button type="success" @click="approve(scope.row.id)" :loading="approveLoading">
                 通过注册
@@ -348,6 +392,7 @@ onMounted(async () => {
 
   <userRooms ref="userRoomsDialog" />
   <newUser ref="newUserDialog" @update-user-list="getUserListApi()" />
+  <managedPassword ref="managedPasswordDialog" @updated="getUserListApi()" />
 </template>
 
 <style lang="less" scoped>

@@ -2,6 +2,7 @@ package root
 
 import (
 	"errors"
+	"os"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -24,12 +25,18 @@ var RemoveCmd = &cobra.Command{
 		if len(args) == 0 {
 			return errors.New("missing user id")
 		}
+		password := os.Getenv("SYNCTV_DEMOTION_PASSWORD")
+		if password == "" {
+			return errors.New(
+				"SYNCTV_DEMOTION_PASSWORD is required so the demoted account remains managed",
+			)
+		}
 		u, err := db.GetUserByID(args[0])
 		if err != nil {
 			log.Errorf("get user failed: %s", err)
 			return nil
 		}
-		if err := db.RemoveRoot(u); err != nil {
+		if err := db.RemoveRoot(u, password); err != nil {
 			log.Errorf("remove root failed: %s", err)
 			return nil
 		}
