@@ -9,6 +9,12 @@ import { resetPasswordApi, getResetCaptchaApi, sendResetCodeApi } from "@/servic
 import { useRouteQuery } from "@vueuse/router";
 import { strLengthLimit } from "@/utils";
 import type { EmailRegForm } from "@/types";
+import {
+  isValidNewUserPassword,
+  USER_PASSWORD_MAX_LENGTH,
+  USER_PASSWORD_MIN_LENGTH,
+  USER_PASSWORD_POLICY_MESSAGE
+} from "@/utils/userPassword";
 
 const { settings } = indexStore();
 const { getUserInfo: updateUserInfo, updateToken } = userStore();
@@ -71,6 +77,9 @@ const btnDisable = ref(false);
 const toReset = async () => {
   if (!formData.value.email || !formData.value.password || !formData.value.captcha) {
     return ElMessage.error("请填写表单完整");
+  }
+  if (!isValidNewUserPassword(formData.value.password)) {
+    return ElMessage.error(USER_PASSWORD_POLICY_MESSAGE);
   }
   try {
     btnDisable.value = true;
@@ -235,9 +244,12 @@ onMounted(async () => {
           v-model="formData.password"
           placeholder="新的密码"
           required
+          autocomplete="new-password"
+          :minlength="USER_PASSWORD_MIN_LENGTH"
+          :maxlength="USER_PASSWORD_MAX_LENGTH"
         />
         <br />
-        <div class="text-sm"><b>注意：</b>所有输入框最大只可输入32个字符</div>
+        <div class="text-sm">新{{ USER_PASSWORD_POLICY_MESSAGE }}</div>
         <button class="btn m-[10px]" @click="toReset" :disabled="btnDisable">完成重置</button>
       </div>
     </form>

@@ -1,3 +1,4 @@
+{{- $imageTag := required "synctv.image.tag is required; choose a verified immutable sha-* tag from NaviMikeW/synctv-fix" .Values.synctv.image.tag -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -25,13 +26,15 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: synctv
-          image: {{ .Values.synctv.image.repository }}:{{ .Values.synctv.image.tag | default .Chart.AppVersion }}
+          image: {{ .Values.synctv.image.repository }}:{{ $imageTag }}
           imagePullPolicy: {{ .Values.synctv.image.pullPolicy }}
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: {{ .Values.synctv.envConfigName }}
+            - secretRef:
+                name: synctv-secrets
           volumeMounts:
             - name: synctv-storage
               mountPath: /root/.synctv

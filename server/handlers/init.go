@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
+	"github.com/synctv-org/synctv/internal/conf"
 	"github.com/synctv-org/synctv/server/handlers/vendors"
 	"github.com/synctv-org/synctv/server/handlers/vendors/vendoralist"
 	"github.com/synctv-org/synctv/server/handlers/vendors/vendorbilibili"
@@ -236,7 +238,16 @@ func initMovie(movie, needAuthMovie *gin.RouterGroup) {
 }
 
 func initUser(user, needAuthUser *gin.RouterGroup) {
-	user.POST("/login", LoginUser)
+	loginHandlers := []gin.HandlerFunc{LoginUser}
+	if conf.Conf.Security.LoginRateLimit.Enable {
+		loginLimiter, err := middlewares.NewLoginLimiter(conf.Conf.Security.LoginRateLimit)
+		if err != nil {
+			log.Fatalf("create login rate limiter: %v", err)
+		}
+		loginHandlers = append([]gin.HandlerFunc{loginLimiter}, loginHandlers...)
+	}
+
+	user.POST("/login", loginHandlers...)
 
 	user.POST("/signup", UserSignupPassword)
 

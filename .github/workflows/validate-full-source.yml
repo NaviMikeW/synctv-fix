@@ -17,8 +17,80 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Test Emby playback reporting
-        run: go test ./internal/embyplayback ./internal/op
+      - name: Test backend security and playback paths
+        run: >-
+          go test
+          ./cmd/...
+          ./internal/bootstrap
+          ./internal/conf
+          ./internal/db
+          ./internal/embyplayback
+          ./internal/op
+          ./internal/password
+          ./server/handlers
+          ./server/middlewares
+          ./server/model
+      - name: Test disabled self-update implementation
+        run: go test ./internal/version -run '^TestSelfUpdateDisabled$'
+      - uses: azure/setup-helm@v4
+      - name: Verify fork deployment safeguards
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n script/install.sh
+          set +e
+          output="$(bash script/install.sh 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$status" -ne 0
+          grep -Fq 'upstream binary installer is disabled' <<<"$output"
+          grep -Fq 'ghcr.io/navimikew/synctv-fix:latest' script/docker-compose.yml
+          grep -Fq 'repository: ghcr.io/navimikew/synctv-fix' helm/values.yaml
+          grep -Fq 'tag: ""' helm/values.yaml
+          grep -Fq 'pullPolicy: IfNotPresent' helm/values.yaml
+          grep -Fq 'synctv.image.tag is required' helm/templates/statefulset-synctv.yaml
+          grep -Fq 'postgresql.password is required' helm/templates/secret.yaml
+
+          set +e
+          image_tag_error="$(
+            helm template synctv ./helm \
+              --set-string postgresql.password='Validation-DB-2026!' 2>&1
+          )"
+          image_tag_status=$?
+          database_password_error="$(
+            helm template synctv ./helm \
+              --set-string synctv.image.tag=sha-validation 2>&1
+          )"
+          database_password_status=$?
+          set -e
+          test "$image_tag_status" -ne 0
+          test "$database_password_status" -ne 0
+          grep -Fq 'synctv.image.tag is required' <<<"$image_tag_error"
+          grep -Fq 'postgresql.password is required' <<<"$database_password_error"
+
+          helm lint ./helm \
+            --set-string synctv.image.tag=sha-validation \
+            --set-string postgresql.password='Validation-DB-2026!'
+          rendered="$(
+            helm template synctv ./helm \
+              --set-string synctv.image.tag=sha-validation \
+              --set-string postgresql.password='Validation-DB-2026!'
+          )"
+          grep -Fq 'image: ghcr.io/navimikew/synctv-fix:sha-validation' <<<"$rendered"
+          grep -Fq 'kind: Secret' <<<"$rendered"
+          grep -Fq 'secretRef:' <<<"$rendered"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: synctv-web/package-lock.json
+      - name: Test and build web app
+        working-directory: synctv-web
+        run: |
+          npm ci
+          npm run test:security
+          npm run build
       - uses: docker/setup-buildx-action@v3
       - name: Build SyncTV image
         uses: docker/build-push-action@v6
@@ -45,3 +117,18 @@ jobs:
           fi
           commit_line="$(grep -F -- '- git/commit:' <<<"$output")"
           test -n "${commit_line#*- git/commit: }"
+      - name: Verify self-update safety message
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(
+            docker run --rm --entrypoint /usr/local/bin/synctv \
+              synctv-fix:validation self-update 2>&1
+          )"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$status" -ne 0
+          grep -Fq 'self-update is disabled in synctv-fix' <<<"$output"
+          grep -Fq 'docker compose pull' <<<"$output"

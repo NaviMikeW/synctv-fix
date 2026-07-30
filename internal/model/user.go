@@ -19,6 +19,8 @@ const (
 	RoleUser    Role = 3
 	RoleAdmin   Role = 4
 	RoleRoot    Role = 5
+
+	LegacyDefaultRootPassword = "root"
 )
 
 func (r Role) String() string {
@@ -68,6 +70,10 @@ func (u *User) DisableAutoAddUsernameSuffix() {
 
 func (u *User) CheckPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword(u.HashedPassword, stream.StringToBytes(password)) == nil
+}
+
+func (u *User) UsesLegacyDefaultRootPassword() bool {
+	return u.IsRoot() && u.CheckPassword(LegacyDefaultRootPassword)
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {

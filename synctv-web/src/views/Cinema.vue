@@ -33,6 +33,7 @@ import { roomInfoApi } from "@/services/apis/room";
 import { artplayerSubtitle } from "@/plugins/subtitle";
 import { sendDanmu, artplayerStreamDanmu } from "@/plugins/danmu";
 import { indexStore } from "@/stores";
+import { decodeEscapedText, textToSafeHtml } from "@/utils/safeHtml";
 
 const { settings } = indexStore();
 
@@ -42,13 +43,33 @@ const { token } = userStore();
 // 获取房间信息
 const room = roomStore();
 const roomID = useRouteParams<string>("roomId");
+const cinemaRoomID = roomID.value;
+const roomSessionID = room.resetRoomSession(cinemaRoomID);
+let cinemaDisposed = false;
+const isCinemaSessionActive = () =>
+  !cinemaDisposed && room.isRoomSessionActive(cinemaRoomID, roomSessionID);
+
+interface ChatMessage {
+  sender: string;
+  content: string;
+  time: string;
+}
+
+const MAX_MESSAGE_COUNT = 64;
+const chatStorageKey = `chatMessages-${cinemaRoomID}`;
 
 const watchers: WatchStopHandle[] = [];
 onBeforeUnmount(() => {
+  cinemaDisposed = true;
   watchers.forEach((w) => w());
+  room.endRoomSession(cinemaRoomID, roomSessionID);
 });
 
-const { getMovies, getCurrentMovie, isLoadingCurrent } = useMovieApi(token.value, roomID.value);
+const { getMovies, getCurrentMovie, isLoadingCurrent } = useMovieApi(
+  token.value,
+  cinemaRoomID,
+  roomSessionID
+);
 const { getMyInfo, myInfo } = useRoomApi();
 const { state: roomInfo, execute: reqRoomInfoApi } = roomInfoApi();
 const { hasMemberPermission } = useRoomPermission();
@@ -57,7 +78,7 @@ let player: Artplayer | undefined;
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const { status, data, send, open } = useWebSocket(
-  `${wsProtocol}//${window.location.host}/api/room/ws?roomId=${roomID.value}`,
+  `${wsProtocol}//${window.location.host}/api/room/ws?roomId=${cinemaRoomID}`,
   {
     ...(token.value ? { protocols: [token.value] } : {}),
     autoReconnect: {
@@ -84,7 +105,84 @@ const sendElement = (msg: Message) => {
 };
 
 // 消息列表
-const chatMsgList = ref<string[]>([]);
+const chatMsgList = ref<ChatMessage[]>([]);
+
+const parseLegacyChatMessage = (message: string): ChatMessage => {
+  const timeMatch = message.match(/\s*<small>\[(\d{2}:\d{2}:\d{2})\]<\/small>\s*$/i);
+  const text = timeMatch ? message.slice(0, timeMatch.index).trimEnd() : message;
+  const colonIndex = text.indexOf(": ");
+  const fullWidthColonIndex = text.indexOf("：");
+  const separatorIndexes = [colonIndex, fullWidthColonIndex].filter((index) => index > 0);
+  const separatorIndex = separatorIndexes.length > 0 ? Math.min(...separatorIndexes) : -1;
+  const separatorLength = separatorIndex === colonIndex ? 2 : 1;
+  const sender = separatorIndex > 0 ? text.slice(0, separatorIndex) : "系统";
+  const content = separatorIndex > 0 ? text.slice(separatorIndex + separatorLength) : text;
+
+  return {
+    // Legacy clients only escaped chat content; the sender was stored as raw
+    // text and must not be entity-decoded.
+    sender: sender.slice(0, 64),
+    content: decodeEscapedText(content).slice(0, 4096),
+    time: timeMatch?.[1] ?? ""
+  };
+};
+
+const normalizeStoredChatMessage = (message: unknown): ChatMessage | undefined => {
+  if (typeof message === "string") {
+    return parseLegacyChatMessage(message);
+  }
+  if (!message || typeof message !== "object") {
+    return;
+  }
+
+  const record = message as Record<string, unknown>;
+  if (typeof record.content !== "string") {
+    return;
+  }
+
+  return {
+    sender: typeof record.sender === "string" ? record.sender.slice(0, 64) : "系统",
+    // Object records were already normalized before being persisted. Decoding
+    // again on every reload would corrupt literal text such as "&lt;".
+    content: record.content.slice(0, 4096),
+    time: typeof record.time === "string" ? record.time.slice(0, 32) : ""
+  };
+};
+
+const persistChatMessages = () => {
+  try {
+    sessionStorage.setItem(chatStorageKey, JSON.stringify(chatMsgList.value));
+  } catch (error) {
+    console.warn("保存聊天记录失败", error);
+  }
+};
+
+const loadChatMessages = () => {
+  const currentKey = chatStorageKey;
+  chatMsgList.value = [];
+
+  try {
+    // 旧键没有房间 ID，无法安全判断记录属于哪个房间。
+    sessionStorage.removeItem("chatMessages-[object Object]");
+    const storedMessages = sessionStorage.getItem(currentKey);
+    if (!storedMessages) {
+      return;
+    }
+
+    const parsed = JSON.parse(storedMessages);
+    if (!Array.isArray(parsed)) {
+      return;
+    }
+
+    chatMsgList.value = parsed
+      .map(normalizeStoredChatMessage)
+      .filter((message): message is ChatMessage => Boolean(message))
+      .slice(-MAX_MESSAGE_COUNT);
+  } catch (error) {
+    console.warn("读取聊天记录失败", error);
+  }
+};
+
 const sendChatText = (msg: string, onSuccess?: () => any, onFailed?: () => any) => {
   if (msg.length === 0) {
     ElMessage({
@@ -110,21 +208,27 @@ const onSendSuccess = () => {
   sendChatMsg_.value = "";
 };
 
-const MAX_MESSAGE_COUNT = 64; // 设定聊天记录的最大长度
-const sendMsg = (msg: string) => {
+const sendMsg = (msg: ChatMessage) => {
   chatMsgList.value.push(msg);
   // 如果超过聊天记录最大长度，则从前面开始删除多余的消息
   nextTick(() => {
     if (chatMsgList.value.length > MAX_MESSAGE_COUNT) {
       chatMsgList.value.splice(0, chatMsgList.value.length - MAX_MESSAGE_COUNT);
     }
-    // 将新消息存储到 sessionStorage
-    sessionStorage.setItem(`chatMessages-${roomID}`, JSON.stringify(chatMsgList.value));
+    persistChatMessages();
   });
 
   // 确保聊天区域滚动到底部
   nextTick(() => {
     if (chatArea.value) chatArea.value.scrollTop = chatArea.value.scrollHeight;
+  });
+};
+
+const sendSystemMsg = (message: string) => {
+  const parsed = parseLegacyChatMessage(message);
+  sendMsg({
+    ...parsed,
+    time: parsed.time || formatTime(new Date())
   });
 };
 
@@ -155,7 +259,7 @@ const playerOption = computed<options>(() => {
       }),
       // WARN: room.currentStatus 变了会导致重载
       newSyncPlugin(sendElement, room.currentStatus, () => room.currentExpireId),
-      artplayerPluginMediaControl(),
+      artplayerPluginMediaControl()
     ]
   };
 
@@ -170,7 +274,7 @@ const playerOption = computed<options>(() => {
         },
         ...obj.map((item) => ({
           url: item.url,
-          html: item.name,
+          html: textToSafeHtml(item.name),
           type: item.type
         }))
       ])
@@ -214,9 +318,9 @@ const { state: currentMovie, execute: reqCurrentMovieApi } = currentMovieApi();
 const updateSources = async () => {
   try {
     await reqCurrentMovieApi({
-      headers: { Authorization: token.value, "X-Room-Id": roomID.value }
+      headers: { Authorization: token.value, "X-Room-Id": cinemaRoomID }
     });
-    if (!currentMovie.value) return;
+    if (!currentMovie.value || !isCinemaSessionActive()) return;
     if (currentMovie.value.movie.base.url.startsWith("/")) {
       currentMovie.value.movie.base.url = `${window.location.origin}${currentMovie.value.movie.base.url}`;
     }
@@ -242,7 +346,7 @@ const updateSources = async () => {
       },
       ...moreSources.map((item) => ({
         url: item.url,
-        html: item.name,
+        html: textToSafeHtml(item.name),
         type: item.type
       }))
     ]);
@@ -284,6 +388,9 @@ const setPlayerStatus = (status: Status) => {
 const peerConnections = ref<{ [key: string]: RTCPeerConnection }>({});
 const localStream = ref<MediaStream | undefined>(undefined);
 let remoteAudioElements: { [key: string]: HTMLAudioElement } = {};
+const stopMediaStream = (stream: MediaStream | undefined) => {
+  stream?.getTracks().forEach((track) => track.stop());
+};
 
 const peerConnectionsLengthWithUserId = computed(() => {
   const userIdSet = new Set(Object.keys(peerConnections.value).map((key) => key.split(":")[0]));
@@ -319,8 +426,10 @@ const toggleMute = () => {
 const switchMicrophone = async () => {
   if (!localStream.value) return;
 
+  const previousStream = localStream.value;
+  let newStream: MediaStream | undefined;
   try {
-    const newStream = await navigator.mediaDevices.getUserMedia({
+    newStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: selectedAudioInput.value,
         echoCancellation: true,
@@ -328,9 +437,12 @@ const switchMicrophone = async () => {
         autoGainControl: true
       }
     });
+    if (!newStream) return;
 
-    // 停止旧轨道
-    localStream.value.getTracks().forEach((track) => track.stop());
+    if (!isCinemaSessionActive() || localStream.value !== previousStream) {
+      stopMediaStream(newStream);
+      return;
+    }
 
     // 替换所有PeerConnection中的轨道
     const [audioTrack] = newStream.getTracks();
@@ -340,11 +452,18 @@ const switchMicrophone = async () => {
       const sender = pc.getSenders().find((s: any) => s.track?.kind === "audio");
       if (sender) {
         await sender.replaceTrack(audioTrack);
+        if (!isCinemaSessionActive() || localStream.value !== previousStream) {
+          stopMediaStream(newStream);
+          return;
+        }
       }
     }
 
+    stopMediaStream(previousStream);
     localStream.value = newStream;
   } catch (err) {
+    stopMediaStream(newStream);
+    if (!isCinemaSessionActive()) return;
     ElMessage.error(`切换麦克风失败: ${err}`);
   }
 };
@@ -371,12 +490,23 @@ const adjustOutputVolume = () => {
 };
 
 const joinWebRTC = async () => {
+  let newStream: MediaStream | undefined;
   try {
     await getAudioDevices();
-    localStream.value = await navigator.mediaDevices.getUserMedia({
+    if (!isCinemaSessionActive()) return;
+
+    newStream = await navigator.mediaDevices.getUserMedia({
       audio: selectedAudioInput.value ? { deviceId: selectedAudioInput.value } : true
     });
+    if (!newStream) return;
+    if (!isCinemaSessionActive()) {
+      stopMediaStream(newStream);
+      return;
+    }
+    localStream.value = newStream;
   } catch (err) {
+    stopMediaStream(newStream);
+    if (!isCinemaSessionActive()) return;
     ElMessage.error(`获取媒体流失败！${err}`);
     return;
   }
@@ -387,19 +517,39 @@ const joinWebRTC = async () => {
   );
 };
 
-const exitWebRTC = async () => {
-  await sendElement(
-    Message.create({
-      type: MessageType.WEBRTC_LEAVE
-    })
-  );
-  for (const id in peerConnections.value) {
-    const pc = peerConnections.value[id];
+const cleanupWebRTC = () => {
+  for (const pc of Object.values(peerConnections.value)) {
+    pc.onicecandidate = null;
+    pc.ontrack = null;
     pc.close();
-    delete peerConnections.value[id];
   }
-  localStream.value!.getTracks().forEach((track) => track.stop());
+  peerConnections.value = {};
+
+  stopMediaStream(localStream.value);
   localStream.value = undefined;
+
+  for (const audio of Object.values(remoteAudioElements)) {
+    audio.onended = null;
+    audio.pause();
+    if (audio.srcObject instanceof MediaStream) {
+      audio.srcObject.getTracks().forEach((track) => track.stop());
+    }
+    audio.srcObject = null;
+    audio.remove();
+  }
+  remoteAudioElements = {};
+};
+
+const exitWebRTC = async () => {
+  try {
+    await sendElement(
+      Message.create({
+        type: MessageType.WEBRTC_LEAVE
+      })
+    );
+  } finally {
+    cleanupWebRTC();
+  }
 };
 
 const handleWebrtcJoin = async (msg: Message) => {
@@ -429,8 +579,10 @@ const closePeerConnection = (id: string) => {
   }
   const remoteAudio = remoteAudioElements[id];
   if (remoteAudio) {
+    remoteAudio.onended = null;
     remoteAudio.pause();
     remoteAudio.srcObject = null;
+    remoteAudio.remove();
     delete remoteAudioElements[id];
   }
 };
@@ -482,7 +634,7 @@ const createPeerConnection = (id: string) => {
     }
     remoteAudio.style.display = "none";
     remoteAudio.onended = () => {
-      document.body.removeChild(remoteAudio);
+      remoteAudio.remove();
       delete remoteAudioElements[id];
     };
     remoteAudioElements[id] = remoteAudio;
@@ -511,6 +663,8 @@ const handleWebrtcIceCandidate = async (msg: Message) => {
 };
 
 const handleElementMessage = (msg: Message) => {
+  if (!isCinemaSessionActive()) return;
+
   console.groupCollapsed("Ws Message");
   console.log(messageTypeToJSON(msg.type));
   console.info(msg);
@@ -553,11 +707,15 @@ const handleElementMessage = (msg: Message) => {
         return;
       }
       const currentTime = formatTime(new Date()); // 格式化时间
-      const senderName = msg.sender?.username;
-      const messageContent = `${senderName}: ${msg.chatContent}`;
-      const messageWithTime = `${messageContent} <small>[${currentTime}]</small>`;
+      const senderName = msg.sender?.username || "匿名用户";
+      const chatContent = decodeEscapedText(msg.chatContent);
+      const messageContent = `${senderName}: ${chatContent}`;
       // 添加消息到消息列表
-      sendMsg(messageWithTime);
+      sendMsg({
+        sender: senderName,
+        content: chatContent,
+        time: currentTime
+      });
       sendDanmu({ text: messageContent, border: true }, player);
       break;
     }
@@ -611,7 +769,7 @@ const handleElementMessage = (msg: Message) => {
 
     case MessageType.MY_STATUS: {
       try {
-        getMyInfo(roomID.value);
+        getMyInfo(cinemaRoomID, roomSessionID);
       } catch (err: any) {
         console.error(err);
         ElNotification({
@@ -662,6 +820,7 @@ const can = (p: RoomMemberPermission) => {
 
 const p = async () => {
   if (can(RoomMemberPermission.PermissionGetMovieList)) await getMovies();
+  if (!isCinemaSessionActive()) return;
   await getCurrentMovie();
 };
 
@@ -669,9 +828,11 @@ onMounted(async () => {
   // 获取房间信息
   try {
     await reqRoomInfoApi({
-      headers: { Authorization: token.value, "X-Room-Id": roomID.value }
+      headers: { Authorization: token.value, "X-Room-Id": cinemaRoomID }
     });
+    if (!isCinemaSessionActive()) return;
   } catch (err: any) {
+    if (!isCinemaSessionActive()) return;
     console.error(err);
     ElNotification({
       title: "错误",
@@ -683,8 +844,10 @@ onMounted(async () => {
 
   // 获取用户信息
   try {
-    await getMyInfo(roomID.value);
+    await getMyInfo(cinemaRoomID, roomSessionID);
+    if (!isCinemaSessionActive()) return;
   } catch (err: any) {
+    if (!isCinemaSessionActive()) return;
     console.error(err);
     ElNotification({
       title: "错误",
@@ -694,11 +857,7 @@ onMounted(async () => {
     return;
   }
 
-  // 从 sessionStorage 获取存储的聊天消息
-  const storedMessages = sessionStorage.getItem(`chatMessages-${roomID}`);
-  if (storedMessages) {
-    chatMsgList.value = JSON.parse(storedMessages);
-  }
+  loadChatMessages();
 
   // 启动websocket连接
   open();
@@ -710,8 +869,10 @@ onMounted(async () => {
       async () => {
         try {
           const arr = await blobToUint8Array(data.value);
+          if (!isCinemaSessionActive()) return;
           handleElementMessage(Message.decode(arr));
         } catch (err: any) {
+          if (!isCinemaSessionActive()) return;
           console.error(err);
           ElMessage.error(err.message);
         }
@@ -720,9 +881,11 @@ onMounted(async () => {
   );
 
   await p();
+  if (!isCinemaSessionActive()) return;
 
   // 获取初始音频设备列表
   await getAudioDevices();
+  if (!isCinemaSessionActive()) return;
 
   // 监听设备变化
   navigator.mediaDevices.addEventListener("devicechange", getAudioDevices);
@@ -730,6 +893,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   navigator.mediaDevices.removeEventListener("devicechange", getAudioDevices);
+  cleanupWebRTC();
 });
 </script>
 
@@ -843,8 +1007,14 @@ onBeforeUnmount(() => {
         </div>
         <div class="card-body mb-2">
           <div class="chatArea" ref="chatArea">
-            <div class="message" v-for="item in chatMsgList" :key="item">
-              <div v-html="item"></div>
+            <div
+              class="message"
+              v-for="(item, index) in chatMsgList"
+              :key="`${item.time}-${index}`"
+            >
+              <span class="message-sender">{{ item.sender }}:</span>
+              <span class="message-content">{{ item.content }}</span>
+              <small v-if="item.time" class="message-time">[{{ item.time }}]</small>
             </div>
           </div>
         </div>
@@ -887,7 +1057,7 @@ onBeforeUnmount(() => {
       :xs="24"
       class="mb-5 max-sm:mb-2"
     >
-      <MovieList @send-msg="sendMsg" :token="token" :roomId="roomID" />
+      <MovieList @send-msg="sendSystemMsg" :token="token" :roomId="roomID" />
     </el-col>
 
     <!-- 添加影片 -->
@@ -908,6 +1078,21 @@ onBeforeUnmount(() => {
   overflow-y: scroll;
   height: 67vh;
   transition: height 0.3s ease;
+
+  .message {
+    overflow-wrap: anywhere;
+  }
+
+  .message-sender {
+    margin-right: 0.25rem;
+    font-weight: 600;
+  }
+
+  .message-time {
+    margin-left: 0.35rem;
+    color: #71717a;
+    white-space: nowrap;
+  }
 }
 
 .loading-spinner {

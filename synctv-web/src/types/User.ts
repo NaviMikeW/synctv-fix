@@ -4,6 +4,7 @@ export interface BaseUserInfo {
   role: ROLE;
   createdAt: number;
   email: string;
+  mustChangePassword: boolean;
 }
 
 export enum ROLE {

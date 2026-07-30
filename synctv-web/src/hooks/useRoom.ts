@@ -12,7 +12,8 @@ import { RoomMemberPermission, RoomAdminPermission, MEMBER_STATUS, RoomStatus } 
 
 // 获取用户信息
 const { info, token, isLogin } = userStore();
-const { myInfo } = storeToRefs(roomStore());
+const room = roomStore();
+const { myInfo } = storeToRefs(room);
 
 export const useRoomApi = () => {
   const { state: thisRoomInfo, execute: reqCheckRoomApi } = checkRoomApi();
@@ -384,7 +385,7 @@ export const useRoomApi = () => {
 
   // 我的信息
   const { state: _myInfo, execute: reqMyInfoApi } = myInfoApi();
-  const getMyInfo = async (roomId: string) => {
+  const getMyInfo = async (roomId: string, roomSessionID = room.roomSessionID) => {
     await reqMyInfoApi({
       headers: {
         Authorization: token.value,
@@ -392,7 +393,7 @@ export const useRoomApi = () => {
       }
     });
 
-    if (_myInfo.value) {
+    if (_myInfo.value && room.isRoomSessionActive(roomId, roomSessionID)) {
       myInfo.value = _myInfo.value;
     }
   };

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, shallowRef, type Component, onMounted } from "vue";
+import { nextTick, onMounted, ref, shallowRef, type Component, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import RoomList from "@/components/RoomList.vue";
 import { userStore } from "@/stores/user";
 import { ElNotification } from "element-plus";
@@ -13,6 +14,25 @@ import { ROLE, role } from "@/types/User";
 const { info, token } = userStore();
 const pwdDialog = ref<InstanceType<typeof UserPassword>>();
 const unameDialog = ref<InstanceType<typeof Uname>>();
+const route = useRoute();
+const router = useRouter();
+
+const openPasswordDialogFromRoute = async () => {
+  await nextTick();
+  pwdDialog.value?.openDialog();
+  const query = { ...route.query };
+  delete query.changePassword;
+  await router.replace({ query });
+};
+
+watch(
+  () => route.query.changePassword,
+  (changePassword) => {
+    if (changePassword === "1") {
+      void openPasswordDialogFromRoute();
+    }
+  }
+);
 const logout = async () => {
   localStorage.clear();
   ElNotification({
@@ -78,7 +98,11 @@ const switchTab = (tab: Tabs) => {
   activeTab.value = tab;
 };
 
-onMounted(() => {});
+onMounted(() => {
+  if (route.query.changePassword === "1") {
+    void openPasswordDialogFromRoute();
+  }
+});
 </script>
 
 <template>

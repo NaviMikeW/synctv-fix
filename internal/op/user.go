@@ -5,10 +5,12 @@ import (
 	"hash/crc32"
 	"sync/atomic"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/synctv-org/synctv/internal/cache"
 	"github.com/synctv-org/synctv/internal/db"
 	"github.com/synctv-org/synctv/internal/email"
 	"github.com/synctv-org/synctv/internal/model"
+	passwordpolicy "github.com/synctv-org/synctv/internal/password"
 	"github.com/synctv-org/synctv/internal/provider"
 	"github.com/synctv-org/synctv/internal/settings"
 	pb "github.com/synctv-org/synctv/proto/message"
@@ -73,6 +75,10 @@ func (u *User) SetPassword(password string) error {
 		return errors.New("guest cannot set password")
 	}
 
+	if err := passwordpolicy.Validate(password); err != nil {
+		return err
+	}
+
 	if u.CheckPassword(password) {
 		return errors.New("password is the same")
 	}
@@ -88,7 +94,15 @@ func (u *User) SetPassword(password string) error {
 	atomic.StoreUint32(&u.version, crc32.ChecksumIEEE(hashedPassword))
 	u.HashedPassword = hashedPassword
 
-	return db.SetUserHashedPassword(u.ID, hashedPassword)
+	if err = db.SetUserHashedPassword(u.ID, hashedPassword); err != nil {
+		return err
+	}
+
+	if err = db.RemoveInitialRootPasswordFile(u.ID); err != nil {
+		log.Warnf("remove initial root password file after password change: %v", err)
+	}
+
+	return nil
 }
 
 func (u *User) CreateRoom(name, password string, conf ...db.CreateRoomConfig) (*RoomEntry, error) {

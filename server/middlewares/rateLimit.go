@@ -11,13 +11,38 @@ import (
 	"github.com/ulule/limiter/v3/drivers/store/memory"
 )
 
+type rateLimitKeyGetter func(*limiter.Limiter, *gin.Context) string
+
 func NewLimiter(period time.Duration, limit int64, options ...limiter.Option) gin.HandlerFunc {
-	limiter := limiter.New(memory.NewStore(), limiter.Rate{
+	return newLimiter(period, limit, nil, options...)
+}
+
+func newLimiter(
+	period time.Duration,
+	limit int64,
+	keyGetter rateLimitKeyGetter,
+	options ...limiter.Option,
+) gin.HandlerFunc {
+	instance := limiter.New(memory.NewStore(), limiter.Rate{
 		Period: period,
 		Limit:  limit,
 	}, options...)
+	if keyGetter == nil {
+		keyGetter = func(instance *limiter.Limiter, c *gin.Context) string {
+			return instance.GetIPKey(c.Request)
+		}
+	}
 
-	return mgin.NewMiddleware(limiter, mgin.WithLimitReachedHandler(func(c *gin.Context) {
-		c.JSON(http.StatusTooManyRequests, model.NewAPIErrorStringResp("too many requests"))
-	}))
+	return mgin.NewMiddleware(
+		instance,
+		mgin.WithKeyGetter(func(c *gin.Context) string {
+			// The Gin adapter defaults to c.ClientIP(), which can trust spoofed
+			// forwarding headers independently of limiter.Options. Use the
+			// limiter's request parser so the configured trust policy applies.
+			return keyGetter(instance, c)
+		}),
+		mgin.WithLimitReachedHandler(func(c *gin.Context) {
+			c.JSON(http.StatusTooManyRequests, model.NewAPIErrorStringResp("too many requests"))
+		}),
+	)
 }

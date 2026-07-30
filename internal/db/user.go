@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/synctv-org/synctv/internal/model"
+	"github.com/synctv-org/synctv/internal/password"
 	"github.com/synctv-org/synctv/utils"
 	"github.com/zijiren233/stream"
 	"golang.org/x/crypto/bcrypt"
@@ -95,19 +96,28 @@ func CreateUser(username, password string, conf ...CreateUserConfig) (*model.Use
 		return nil, errors.New("username cannot be empty")
 	}
 
-	if password == "" {
-		return nil, errors.New("password cannot be empty")
+	hashedPassword, err := hashUserPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateUserWithHashedPassword(username, hashedPassword, conf...)
+}
+
+func hashUserPassword(value string) ([]byte, error) {
+	if err := password.Validate(value); err != nil {
+		return nil, err
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword(
-		stream.StringToBytes(password),
+		stream.StringToBytes(value),
 		bcrypt.DefaultCost,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	return CreateUserWithHashedPassword(username, hashedPassword, conf...)
+	return hashedPassword, nil
 }
 
 func CreateOrLoadUserWithProvider(
@@ -118,12 +128,9 @@ func CreateOrLoadUserWithProvider(
 		return nil, errors.New("provider user id cannot be empty")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword(
-		stream.StringToBytes(password),
-		bcrypt.DefaultCost,
-	)
+	hashedPassword, err := hashUserPassword(password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, err
 	}
 
 	user := &model.User{
