@@ -5,13 +5,13 @@ import (
 )
 
 const (
-	MinLength = 12
+	MinLength = 8
 	MaxLength = 32
 )
 
 var (
 	ErrEmpty       = errors.New("password is empty")
-	ErrTooShort    = errors.New("password must be at least 12 characters")
+	ErrTooShort    = errors.New("password must be at least 8 characters")
 	ErrTooLong     = errors.New("password must be at most 32 characters")
 	ErrInvalidChar = errors.New("password must contain only printable ASCII characters")
 )

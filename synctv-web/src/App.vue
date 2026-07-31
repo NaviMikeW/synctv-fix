@@ -31,7 +31,7 @@ const openPasswordSettings = () => {
     <div>
       <strong class="block">安全提醒：root 仍在使用初始默认密码</strong>
       <span class="text-sm">
-        建议尽快改成至少 12 位的新密码。在修改前，播放和管理功能仍可照常使用。
+        建议尽快改成至少 8 位的新密码。在修改前，播放和管理功能仍可照常使用。
       </span>
     </div>
     <button

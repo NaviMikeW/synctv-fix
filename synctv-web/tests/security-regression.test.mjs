@@ -79,7 +79,7 @@ test("通知组件使用 textContent 而不是 HTML 字符串", async () => {
   assert.match(source, /content\.textContent\s*=\s*this\.content/);
 });
 
-test("所有新用户密码入口共享 12 到 32 位规则", async () => {
+test("所有新用户密码入口共享 8 到 32 位规则", async () => {
   const [registerSource, resetSource, adminSource, dialogSource, policySource] = await Promise.all([
     readSource("src/views/auth/Register.vue"),
     readSource("src/views/auth/Reset.vue"),
@@ -91,7 +91,7 @@ test("所有新用户密码入口共享 12 到 32 位规则", async () => {
   for (const source of [registerSource, resetSource, adminSource, dialogSource]) {
     assert.match(source, /@\/utils\/userPassword/);
   }
-  assert.match(policySource, /USER_PASSWORD_MIN_LENGTH\s*=\s*12/);
+  assert.match(policySource, /USER_PASSWORD_MIN_LENGTH\s*=\s*8/);
   assert.match(policySource, /USER_PASSWORD_MAX_LENGTH\s*=\s*32/);
   assert.match(policySource, /USER_PASSWORD_PRINTABLE_ASCII_PATTERN/);
   assert.match(policySource, /isValidNewUserPassword/);

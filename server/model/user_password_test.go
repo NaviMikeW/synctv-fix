@@ -7,8 +7,8 @@ import (
 	dbModel "github.com/synctv-org/synctv/internal/model"
 )
 
-func TestNewUserPasswordRequestsRequireTwelveCharacters(t *testing.T) {
-	const shortPassword = "12345678901"
+func TestNewUserPasswordRequestsRequireEightCharacters(t *testing.T) {
+	const shortPassword = "1234567"
 
 	tests := []struct {
 		name     string
@@ -81,8 +81,8 @@ func TestNewUserPasswordRequestsRequireTwelveCharacters(t *testing.T) {
 	}
 }
 
-func TestNewUserPasswordAcceptsTwelveCharacters(t *testing.T) {
-	req := SetUserPasswordReq{Password: "123456789012"}
+func TestNewUserPasswordAcceptsEightCharacters(t *testing.T) {
+	req := SetUserPasswordReq{Password: "12345678"}
 	if err := req.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
