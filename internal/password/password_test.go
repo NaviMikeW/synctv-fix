@@ -13,7 +13,7 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			name:     "accepts minimum length",
-			password: "123456789012",
+			password: "12345678",
 		},
 		{
 			name:     "rejects empty",
@@ -22,7 +22,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:     "rejects short",
-			password: "12345678901",
+			password: "1234567",
 			wantErr:  ErrTooShort,
 		},
 		{
@@ -32,7 +32,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name:     "rejects non-printable",
-			password: "12345678901\n",
+			password: "1234567\n",
 			wantErr:  ErrInvalidChar,
 		},
 		{
